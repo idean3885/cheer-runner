@@ -108,17 +108,16 @@ presentation  ──>  application  ──>  domain
 |---|---|---|---|
 | `LocationPort` | 위치 구독 시작·중지 | `ExpoLocationAdapter` | `fakeLocation` |
 | `SpeechPort` | 음성 출력과 그 결과 | `ExpoSpeechAdapter` | `fakeSpeech` |
+| 저장 | 코스·주행 기록·진단 기록 | `CourseStore` · `SessionStore` · `FileTrace` (파일) | `fakeStore` · `fakeSession` · `fakeTrace` |
 | 시계 | 현재 시각 | 주입한 `Date.now` | `fakeClock` |
 
-시계를 포트 인터페이스로 두지 않고 함수 하나를 주입한다. 되돌려 주는 값이 숫자 하나뿐이라 인터페이스를 둘 이유가 없다.
+시계를 포트 인터페이스로 두지 않고 함수 하나를 주입한다. 되돌려 주는 값이 숫자 하나뿐이라 인터페이스를 둘 이유가 없다. 그래도 주입은 한다. 도메인이 `Date.now()` 를 직접 부르면 틱 경계·결손 판정·무이동 판정 시험을 짤 수 없다.
 
 `SpeechPort` 는 결과를 되돌려 준다. 부르고 끝나는 함수로 두면 부른 사실만 남고 재생됐는지는 알 수 없다. 웹 프로토타입이 그 틈에 빠졌고, 이 앱도 처음에 같은 자리에 빠졌다.
-| `CourseRepository` | 코스 저장·조회·삭제 | `expo-sqlite` | 메모리 |
-| `SpeechPort` | 한국어 음성 안내 | `expo-speech` | 호출 기록 |
-| `NotifyPort` | 알림 | `expo-notifications` | 호출 기록 |
-| `MapPort` | 지도 표시·탭 좌표 | `react-native-maps` | 첫 릴리스에 없음 |
 
-`ClockPort` 를 따로 두는 이유는 시험이다. `Date.now()` 를 도메인이 직접 부르면 틱 경계·결손 판정·무이동 판정 시험을 짤 수 없다.
+지도는 포트로 두지 않는다. 화면이 직접 쓰고 도메인과 응용 계층은 지도를 모른다. 좌표를 받아 지점을 지정하는 것은 코스의 행위이고, 그 좌표가 지도에서 왔는지는 코스가 알 필요가 없다.
+
+알림도 두지 않는다. 배경에서 음성이 끝까지 재생되는 것을 확인했으므로 응원은 알림 없이 성립한다. 근거는 [#5](https://github.com/idean3885/cheer-runner/issues/5) 에 남겼다.
 
 #### 포트 모양은 프로토타입에서 확정했다
 
@@ -128,7 +127,7 @@ presentation  ──>  application  ──>  domain
 |---|---|---|---|
 | `store` | 24 | `get` `getJSON` `set` `setJSON` `remove` | `CourseRepository` |
 | `geo` | 7 | `supported` `once` `watch` `unwatch` | `LocationPort` |
-| `notif` | 6 | `permission` `request` `show` | `NotifyPort` |
+| `notif` | 6 | `permission` `request` `show` | 없음. 앱은 알림을 쓰지 않는다 |
 | `voice` | 5 | `supported` `say` `stop` | `SpeechPort` |
 
 세 가지를 배웠다.
