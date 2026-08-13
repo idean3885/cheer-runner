@@ -1,0 +1,30 @@
+<!--
+  안드로이드 적응형 아이콘의 전경 레이어.
+
+  안드로이드는 제조사마다 다른 마스크(원·둥근 사각·물방울)를 씌우고, 108 중
+  가운데 72 만 항상 보인다. 바깥은 잘릴 수 있다. 그래서 앱 아이콘(icon.svg)을
+  그대로 쓰면 바람과 깃발이 먼저 잘린다.
+
+  배경은 이 파일에 넣지 않는다. app.json 의 adaptiveIcon.backgroundColor 가 맡는다.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="1024" height="1024">
+  <g transform="translate(16.7 15.5) scale(0.76)">
+    <g fill="none" stroke="#ffffff" stroke-linecap="round">
+      <path d="M8 29 L25 34" stroke-width="5" stroke-opacity=".40"/>
+      <path d="M6 42 L26 46" stroke-width="5.5" stroke-opacity=".70"/>
+      <path d="M12 55 L25 58" stroke-width="5" stroke-opacity=".40"/>
+    </g>
+
+    <circle cx="63" cy="30" r="8" fill="#ffffff"/>
+    <g fill="none" stroke="#ffffff" stroke-width="8.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M59 38 L42 52"/>
+      <path d="M57 41 L69 42 L72 51"/>
+      <path d="M57 41 L45 45 L36 38"/>
+      <path d="M42 52 L57 57 L55 69"/>
+      <path d="M42 52 L29 64 L21 75"/>
+    </g>
+
+    <path d="M84 37 L84 76" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+    <path d="M84 39 L95 44.5 L84 50 Z" fill="#ffffff"/>
+  </g>
+</svg>
