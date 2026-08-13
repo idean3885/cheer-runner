@@ -1,28 +1,243 @@
-// 주행 화면. 아직 만들지 않는다.
+// 주행 화면. 러너가 보는 화면이다.
 //
-// 진단 화면이 배경 위치와 소리를 통과하기 전에는 이 화면을 만들지 않는다.
-// 순서를 뒤집으면 여기 쌓은 것 전부가 배경 위치 하나에 걸린다.
+// 이 화면이 하는 일은 셋이다. 세션을 부르고, 되돌아온 값을 그리고, 버튼을 연결한다.
+// 거리를 쌓거나 도달을 판정하는 코드는 여기 없다. 그것은 도메인에 있다.
 //
-// 통과하면 DOMAIN.md 의 계약대로 만든다. 거리·페이스·구간 템포·응원 순이다.
+// 화면에 로직을 두면 두 가지가 무너진다. 기기 없이 시험할 수 없고, 같은 로직이
+// 진단 화면과 주행 화면에 각각 적힌다.
 
-import { StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import MapView, { Marker, Polyline, Circle, PROVIDER_DEFAULT } from 'react-native-maps';
+import { runSession } from '../../application/wiring';
+import { WAYPOINT_RAD } from '../../domain/constants';
+
+function fmtDur(ms) {
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  const two = function (n) { return (n < 10 ? '0' : '') + n; };
+  return (h > 0 ? h + ':' : '') + two(m) + ':' + two(sec);
+}
+
+function fmtPace(sec) {
+  if (sec == null || !isFinite(sec)) return '--\'--"';
+  const m = Math.floor(sec / 60), s = Math.round(sec % 60);
+  return m + "'" + (s < 10 ? '0' : '') + s + '"';
+}
 
 export function RunScreen() {
+  const [v, setV] = useState(runSession.view());
+  const [notice, setNotice] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  function refresh() { setV(runSession.view()); }
+
+  useEffect(function () {
+    // 주행 전에도 지도를 띄운다. 위치를 한 번 받아 러너 자리에 맞춘다
+    runSession.locate();
+    const off = runSession.onChange(refresh);
+    // 화면이 켜져 있을 때만 시계를 돌린다. 배경에서는 위치 수신이 갱신을 부른다
+    const t = setInterval(refresh, 1000);
+    return function () { off(); clearInterval(t); };
+  }, []);
+
+  async function onStart() {
+    setBusy(true);
+    const r = await runSession.start();
+    setBusy(false);
+    if (!r.started) {
+      setNotice(r.reason === 'background-permission'
+        ? '위치 권한을 «항상 허용» 으로 주어야 화면이 꺼진 뒤에도 기록됩니다'
+        : '시작하지 못했습니다: ' + (r.error || r.reason));
+      return;
+    }
+    setNotice(null);
+    refresh();
+  }
+
+  async function onFinish() {
+    setBusy(true);
+    await runSession.finish('user');
+    setBusy(false);
+    refresh();
+  }
+
+  function onMarkHere() {
+    const r = runSession.markHere();
+    setNotice(r.marked
+      ? '여기를 표시했습니다. 이번 주행에는 울리지 않고 다음부터 응원합니다'
+      : '아직 위치를 받지 못했습니다');
+    refresh();
+  }
+
+  const running = v.state === 'running';
+  const km = (v.dist / 1000).toFixed(2);
+
+  // 지도를 러너 자리에 맞춘다. 지도를 손으로 옮긴 뒤에는 따라가지 않는다.
+  // 달리는 중에 화면이 계속 튀면 지점을 찍을 수 없다
+  const region = v.here ? {
+    latitude: v.here.lat, longitude: v.here.lon,
+    latitudeDelta: 0.006, longitudeDelta: 0.006
+  } : null;
+
+  function onMapPress(e) {
+    if (!e.nativeEvent || !e.nativeEvent.coordinate) return;
+    const c = e.nativeEvent.coordinate;
+    const r = runSession.pin(c.latitude, c.longitude);
+    setNotice(pinNotice(r));
+    refresh();
+  }
+
   return (
     <View style={s.root}>
-      <Text style={s.title}>치어러너</Text>
-      <Text style={s.body}>
-        배경 위치와 소리를 먼저 확인합니다. 진단 화면에서 «꺼진 동안» 이 0 이 아니어야
-        이 화면을 만듭니다.
-      </Text>
-      <Text style={s.note}>근거: docs/MVP.md 확인 0 단계</Text>
+      <View style={s.head}>
+        <Text style={s.km}>{km}</Text>
+        <Text style={s.kmUnit}>km</Text>
+      </View>
+
+      <View style={s.grid}>
+        <Cell label="시간" value={fmtDur(v.ms)} />
+        <Cell label="페이스" value={fmtPace(v.pace)} />
+        <Cell label="다음 지점" value={targetText(v)} />
+      </View>
+
+      {notice ? <Text style={s.notice}>{notice}</Text> : null}
+
+      <View style={s.btns}>
+        <Big label={running ? '종료' : '시작'} tone={running ? 'stop' : 'go'}
+          disabled={busy} onPress={running ? onFinish : onStart} />
+        <Big label="여기 표시" tone="mark" disabled={!running || busy} onPress={onMarkHere} />
+      </View>
+
+      <View style={s.mapBox}>
+        {region ? (
+          <MapView style={s.map} provider={PROVIDER_DEFAULT} initialRegion={region}
+            showsUserLocation followsUserLocation={running} onPress={onMapPress}>
+            {v.segments.map(function (seg, i) {
+              return (
+                <Polyline key={'p' + i} strokeColor="#c4452b" strokeWidth={4}
+                  coordinates={seg.map(function (pt) {
+                    return { latitude: pt.lat, longitude: pt.lon };
+                  })} />
+              );
+            })}
+            {v.spots.map(function (p, i) {
+              const done = v.arrivals.some(function (a) { return a.idx === i; });
+              return [
+                <Circle key={'c' + p.id} center={{ latitude: p.lat, longitude: p.lon }}
+                  radius={p.rad || WAYPOINT_RAD}
+                  strokeColor={done ? '#9ca3af' : '#c4452b'}
+                  fillColor={done ? 'rgba(156,163,175,0.15)' : 'rgba(196,69,43,0.15)'} />,
+                <Marker key={'m' + p.id} coordinate={{ latitude: p.lat, longitude: p.lon }}
+                  title={(i + 1) + '번 지점'} description={done ? '지남' : '대기'}
+                  pinColor={done ? 'gray' : 'red'} />
+              ];
+            })}
+          </MapView>
+        ) : (
+          <View style={s.mapWait}>
+            <Text style={s.empty}>위치를 받으면 지도가 나타납니다.</Text>
+          </View>
+        )}
+      </View>
+
+      <Text style={s.h2}>응원받을 지점 {v.spots.length}곳</Text>
+      {v.spots.length === 0 ? (
+        <Text style={s.empty}>{v.hasCourse
+          ? '지도를 눌러 지정하거나, 달리는 중에 «여기 표시» 를 누릅니다.'
+          : '먼저 한 번 달립니다. 그 경로가 코스가 되고, 그때부터 지도에서 지정할 수 있습니다. 달리는 중에는 «여기 표시» 로 남깁니다.'}</Text>
+      ) : (
+      <ScrollView style={s.list}>
+        {v.spots.map(function (p, i) {
+          const done = v.arrivals.some(function (a) { return a.idx === i; });
+          return (
+            <View key={p.id} style={s.row}>
+              <Text style={[s.rowK, done ? s.rowDone : null]}>{i + 1}번 지점</Text>
+              <Text style={s.rowV}>
+                {done ? '지남' : (i === v.arrivals.length && running ? '다음' : '대기')}
+              </Text>
+              <Pressable onPress={function () { runSession.removeSpot(p.id); refresh(); }} hitSlop={8}>
+                <Text style={s.del}>지우기</Text>
+              </Pressable>
+            </View>
+          );
+        })}
+        {v.arrivals.map(function (a) {
+          return (
+            <Text key={'a' + a.idx} style={s.arrival}>
+              {a.idx + 1}번 지점 도착 · 구간 {Math.round(a.segDist)}m · {fmtPace(a.pace)}
+            </Text>
+          );
+        })}
+      </ScrollView>
+      )}
     </View>
   );
 }
 
+function pinNotice(r) {
+  if (r.ok) return '지점을 지정했습니다. 아직 지나지 않은 곳이면 이번 주행에도 응원합니다';
+  if (r.reason === 'no-course') {
+    return '아직 코스가 없습니다. 한 번 달리면 그 경로가 코스가 되고, 그때부터 지도에서 지정할 수 있습니다';
+  }
+  return '코스에서 ' + Math.round(r.distance) + 'm 떨어진 자리입니다. '
+    + r.limit + 'm 안쪽만 지정할 수 있습니다';
+}
+
+// 목표가 없는 것과 아직 거리를 모르는 것은 다르다. 다 지났는데 계산 중으로 두면
+// 러너가 남은 지점이 있다고 읽는다
+function targetText(v) {
+  if (v.target) return v.targetDist != null ? Math.round(v.targetDist) + 'm' : '계산 중';
+  if (v.spots.length === 0) return '없음';
+  return '모두 지남';
+}
+
+function Cell(props) {
+  return (
+    <View style={s.cell}>
+      <Text style={s.cellLabel}>{props.label}</Text>
+      <Text style={s.cellValue}>{props.value}</Text>
+    </View>
+  );
+}
+
+function Big(props) {
+  return (
+    <Pressable onPress={props.onPress} disabled={props.disabled}
+      style={[s.big, s['big_' + props.tone], props.disabled ? s.bigOff : null]}>
+      <Text style={[s.bigText, props.tone === 'mark' ? s.bigTextDark : null]}>{props.label}</Text>
+    </Pressable>
+  );
+}
+
 const s = StyleSheet.create({
-  root: { flex: 1, paddingHorizontal: 20, justifyContent: 'center' },
-  title: { fontSize: 30, fontWeight: '800', marginBottom: 12 },
-  body: { fontSize: 15, lineHeight: 23, color: '#334' },
-  note: { fontSize: 12, color: '#889', marginTop: 16 }
+  root: { flex: 1, paddingHorizontal: 16 },
+  head: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', marginTop: 8 },
+  km: { fontSize: 64, fontWeight: '800', fontVariant: ['tabular-nums'], color: '#111827' },
+  kmUnit: { fontSize: 18, color: '#6b7280', marginBottom: 12, marginLeft: 4 },
+  grid: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  cell: { flex: 1, backgroundColor: '#f3f4f6', borderRadius: 12, paddingVertical: 10, alignItems: 'center' },
+  cellLabel: { fontSize: 11, color: '#6b7280' },
+  cellValue: { fontSize: 20, fontWeight: '700', fontVariant: ['tabular-nums'], marginTop: 2 },
+  notice: { marginTop: 10, fontSize: 12, color: '#9a6700', lineHeight: 17 },
+  btns: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  big: { flex: 1, borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
+  big_go: { backgroundColor: '#c4452b' },
+  big_stop: { backgroundColor: '#374151' },
+  big_mark: { backgroundColor: '#fde8e3', borderWidth: 1, borderColor: '#e8b4a8' },
+  bigOff: { opacity: 0.4 },
+  bigText: { fontSize: 17, fontWeight: '700', color: '#ffffff' },
+  bigTextDark: { color: '#a3391f' },
+  mapBox: { flex: 1, marginTop: 14, marginBottom: 2, borderRadius: 14, overflow: 'hidden', backgroundColor: '#eef1f5' },
+  map: { flex: 1 },
+  mapWait: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  h2: { marginTop: 14, fontSize: 13, fontWeight: '700', color: '#374151' },
+  empty: { marginTop: 4, marginBottom: 10, fontSize: 12, color: '#6b7280', lineHeight: 18 },
+  list: { maxHeight: 160, marginTop: 6, marginBottom: 8 },
+  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' },
+  rowK: { flex: 1, fontSize: 14, fontWeight: '600' },
+  rowDone: { color: '#9ca3af', textDecorationLine: 'line-through' },
+  rowV: { fontSize: 12, color: '#6b7280', marginRight: 14 },
+  del: { fontSize: 12, color: '#c4452b' },
+  arrival: { fontSize: 12, color: '#1a7f37', paddingVertical: 3 }
 });

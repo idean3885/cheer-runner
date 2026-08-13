@@ -13,8 +13,11 @@ const NAME = 'session.json';
 function handle() { return new File(Paths.document, NAME); }
 
 export const SessionStore = {
-  start(maxMs) {
-    const rec = { startedAt: Date.now(), expiresAt: Date.now() + maxMs };
+  // owner 는 이 구독을 건 주체다. 배경 맥락이 새로 만들어지면 누가 걸었는지 알 수 없고,
+  // 진단과 주행이 같은 구독을 나눠 쓰므로 잘못된 쪽이 받으면 남의 구독을 해제한다
+  start(maxMs, at, owner) {
+    const t = at || Date.now();
+    const rec = { owner: owner || 'unknown', startedAt: t, expiresAt: t + maxMs };
     try {
       const f = handle();
       if (!f.exists) f.create();

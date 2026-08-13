@@ -106,8 +106,13 @@ presentation  ──>  application  ──>  domain
 
 | 포트 (인터페이스) | 하는 일 | 운영 구현체 | 시험 대역 |
 |---|---|---|---|
-| `LocationPort` | 위치 구독 시작·중지 | `ExpoLocationAdapter` | `ReplayLocationAdapter` |
-| `ClockPort` | 현재 시각 | 시스템 시계 | 고정 시계 |
+| `LocationPort` | 위치 구독 시작·중지 | `ExpoLocationAdapter` | `fakeLocation` |
+| `SpeechPort` | 음성 출력과 그 결과 | `ExpoSpeechAdapter` | `fakeSpeech` |
+| 시계 | 현재 시각 | 주입한 `Date.now` | `fakeClock` |
+
+시계를 포트 인터페이스로 두지 않고 함수 하나를 주입한다. 되돌려 주는 값이 숫자 하나뿐이라 인터페이스를 둘 이유가 없다.
+
+`SpeechPort` 는 결과를 되돌려 준다. 부르고 끝나는 함수로 두면 부른 사실만 남고 재생됐는지는 알 수 없다. 웹 프로토타입이 그 틈에 빠졌고, 이 앱도 처음에 같은 자리에 빠졌다.
 | `CourseRepository` | 코스 저장·조회·삭제 | `expo-sqlite` | 메모리 |
 | `SpeechPort` | 한국어 음성 안내 | `expo-speech` | 호출 기록 |
 | `NotifyPort` | 알림 | `expo-notifications` | 호출 기록 |
@@ -263,32 +268,46 @@ presentation  ──>  application  ──>  domain
 ## 폴더 구조
 
 ```
-src/
-  domain/
-    value/        Meters, MetersPerSecond, SecondsPerKm, Millis, GeoPoint
-    model/        Fix, Waypoint, Course, Track, Run, Profile, Split
-    policy/       distance, pace, score, fever, arrival, idle, badge, dog
-    event/        도메인 사건 정의
-  application/
-    port/         LocationPort, ClockPort, Repository, SpeechPort, NotifyPort
-    usecase/      startRun, ingestFix, finishRun, saveCourse, loadCourse
-  infrastructure/
-    location/     expo-location 어댑터 (백그라운드 작업 등록)
-    storage/      저장소 구현
-    speech/       expo-speech 어댑터
-    notify/       expo-notifications 어댑터
-  presentation/
-    screen/       주행, 코스 목록, 결과
-    component/    지도, 계기판, 점수판
-test/
-  domain/         순수 단위 시험
-  fixture/        실측 위치 로그 (PoC 수집분)
+app/
+  src/
+    domain/
+      Run.js          시작 · 위치 받기 · 종료 · 현재 목표. 상태 전이
+      Track.js        늘리기 · 결손 표시 · 틱과 창 페이스
+      Course.js       여기 표시 · 승격 · 고정 · 제거
+      geo.js          거리 · 페이스 · 경로까지의 거리
+      constants.js    상수와 그 근거
+    application/
+      port/           LocationPort, SpeechPort
+      RunSession.js       주행 유스케이스
+      DiagnosticSession.js 진단 유스케이스
+      BackgroundRouter.js  배경 위치를 누구에게 줄지 정한다
+      wiring.js           조립. 어느 구현체를 어느 포트에 끼우는지
+    infrastructure/
+      location/       expo-location 어댑터 (배경 작업 등록)
+      speech/         expo-speech 어댑터
+      storage/        기록 · 세션 · 코스 · 자동 시작 표식
+    presentation/
+      screen/         주행, 진단
+  test/
+    domain.mjs        도메인 행위와 불변식
+    session.mjs       응용 계층과 배경 분배
+    run.mjs           진단 세션과 소스 관문
+    device.mjs        진단 경로 실기기
+    device-run.mjs    주행 경로 실기기
+    device-lib.mjs    기기 시험 공용부
+    screen.mjs        시뮬레이터로 화면 그림을 남긴다
+    doubles.mjs       시험 대역
 docs/
   DOMAIN.md       도메인 계약
   ARCHITECTURE.md 이 문서
-  MEASURE.md      ops-agent·볼트 측정
+  VERIFICATION.md 확인 절차
+  CONVENTIONS.md  문서 규약
+  MEASURE.md      작업 도구 측정
   adr/            결정 기록
+  diagrams/       C4 그림
 ```
+
+값 객체 랩퍼와 정책 분리를 두지 않는 근거는 [ADR 0007](adr/0007-domain-files-by-aggregate.md) 에 있다.
 
 ## 검토 지점
 

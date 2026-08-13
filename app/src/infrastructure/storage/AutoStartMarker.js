@@ -8,13 +8,14 @@
 
 import { File, Paths } from 'expo-file-system';
 
-const NAME = 'auto-start';
+// 진단과 주행을 따로 띄운다. 확인해야 하는 경로가 둘이므로 표식도 둘이다
+export const MARK = { diagnostic: 'auto-start', run: 'auto-run' };
 
 export const AutoStartMarker = {
   // 있으면 지우고 참을 돌려준다
-  consume() {
+  consume(name) {
     try {
-      const f = new File(Paths.document, NAME);
+      const f = new File(Paths.document, name || MARK.diagnostic);
       if (!f.exists) return false;
       f.write('');
       f.delete();

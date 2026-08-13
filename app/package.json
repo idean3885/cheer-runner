@@ -10,15 +10,21 @@
     "expo-status-bar": "~57.0.1",
     "expo-task-manager": "~57.0.9",
     "react": "19.2.3",
-    "react-native": "0.86.2"
+    "react-native": "0.86.2",
+    "react-native-maps": "1.27.2"
   },
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "test": "node --no-warnings test/run.mjs",
-    "test:device": "node --no-warnings test/device.mjs"
+    "test": "node --no-warnings test/domain.mjs && node --no-warnings test/session.mjs && node --no-warnings test/run.mjs",
+    "test:device": "node --no-warnings test/device.mjs && node --no-warnings test/device-run.mjs",
+    "test:device:diag": "node --no-warnings test/device.mjs",
+    "test:device:run": "node --no-warnings test/device-run.mjs",
+    "build:sim": "COCOAPODS_PARALLEL_CODE_SIGN=NO xcodebuild -workspace ios/app.xcworkspace -scheme app -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build | tail -2",
+    "build:device": "COCOAPODS_PARALLEL_CODE_SIGN=NO xcodebuild -workspace ios/app.xcworkspace -scheme app -configuration Release -destination 'generic/platform=iOS' -allowProvisioningUpdates build | tail -2",
+    "test:screen": "node --no-warnings test/screen.mjs"
   },
   "private": true
 }
