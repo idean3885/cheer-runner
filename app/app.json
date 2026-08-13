@@ -27,7 +27,7 @@
         "FOREGROUND_SERVICE_LOCATION"
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#c4452b",
+        "backgroundColor": "#2f7d6b",
         "foregroundImage": "./assets/android-icon-foreground.png"
       }
     },
