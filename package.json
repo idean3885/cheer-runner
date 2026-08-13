@@ -1,0 +1,12 @@
+{
+  "name": "cheer-runner-docs",
+  "private": true,
+  "description": "설계 문서용 도구. 제품 코드는 여기 없다.",
+  "type": "module",
+  "scripts": {
+    "diagrams": "node tools/render-diagrams.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.62.1"
+  }
+}
