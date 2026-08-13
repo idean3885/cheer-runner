@@ -6,6 +6,7 @@
 // 위치 포트와 기록·세션 저장을 주입받는다. 시험에서는 가짜를 넣는다.
 // 벽시계도 주입받는다. 만료 판정을 시험하려면 시각을 마음대로 옮겨야 한다.
 
+export const OWNER = 'diagnostic';
 export const MAX_MS = 30 * 60 * 1000;
 
 // 음성은 부른 것과 들린 것이 다르다. 어디까지 갔는지를 기록에 남겨 구분한다.
@@ -91,7 +92,7 @@ export function createDiagnosticSession(deps) {
       return { started: false, reason: 'background-permission', permissions: p };
     }
 
-    session.start(MAX_MS, now());
+    session.start(MAX_MS, now(), OWNER);
     try {
       await location.startBackground();
     } catch (e) {
@@ -110,9 +111,10 @@ export function createDiagnosticSession(deps) {
     trace.append('mark', '=== 중지 ===');
   }
 
+  // 배경 진입 기록은 조립 지점이 남긴다. 앱의 상태는 진단만의 사실이 아니고,
+  // 두 곳에서 적으면 기기 시험이 경계를 두 번 찾는다
   function enterBackground() {
     hiddenSince = now();
-    trace.append('vis', '배경 진입');
   }
 
   // 복귀할 때 화면이 꺼진 구간에 들어온 건수를 센다. 이 숫자가 판정이다

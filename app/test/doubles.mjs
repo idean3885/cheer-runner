@@ -25,7 +25,7 @@ export function fakeTrace() {
 export function fakeSession() {
   let rec = null;
   return {
-    start: function (maxMs, at) { rec = { startedAt: at, expiresAt: at + maxMs }; return rec; },
+    start: function (maxMs, at, owner) { rec = { owner: owner || 'unknown', startedAt: at, expiresAt: at + maxMs }; return rec; },
     read: function () { return rec; },
     clear: function () { rec = null; }
   };
@@ -50,7 +50,11 @@ export function fakeLocation(opts) {
     },
     stopBackground: async function () { state.stopCalls++; state.running = false; },
     isBackgroundRunning: async function () { return state.running; },
-    watchForeground: async function () { return { remove: function () {} }; }
+    watchForeground: async function () { return { remove: function () {} }; },
+    once: async function () {
+      if (o.failOnce) throw new Error('위치를 받지 못했습니다');
+      return platformFix(o.at || {});
+    }
   };
 }
 

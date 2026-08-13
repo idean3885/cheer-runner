@@ -11,23 +11,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { AppState, Button, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { createDiagnosticSession } from '../../application/DiagnosticSession';
-import { ExpoLocationAdapter, setSink } from '../../infrastructure/location/ExpoLocationAdapter';
+import { ExpoLocationAdapter } from '../../infrastructure/location/ExpoLocationAdapter';
 import { ExpoSpeechAdapter } from '../../infrastructure/speech/ExpoSpeechAdapter';
 import { FileTrace } from '../../infrastructure/storage/FileTrace';
-import { SessionStore } from '../../infrastructure/storage/SessionStore';
-import { AutoStartMarker } from '../../infrastructure/storage/AutoStartMarker';
-
-// 배경 작업 등록은 모듈 최상위여야 한다. 그 맥락은 화면 상태를 보지 못하므로
-// 세션도 여기서 만든다. 맥락이 새로 만들어져도 이 줄이 다시 실행돼 기록이 끊기지 않는다
-const session = createDiagnosticSession({
-  location: ExpoLocationAdapter,
-  trace: FileTrace,
-  session: SessionStore,
-  speak: ExpoSpeechAdapter.speak
-});
-
-setSink(function (payload) { session.onBackgroundFixes(payload); });
+import { diagnosticSession as session } from '../../application/wiring';
 
 export function DiagnosticScreen() {
   const [running, setRunning] = useState(false);
@@ -74,18 +61,12 @@ export function DiagnosticScreen() {
     refresh();
   }
 
-  // 첫 실행에서 남은 구독을 정리하고, 자동 시작 표식이 있으면 스스로 시작한다
+  // 남은 구독 정리와 자동 시작 표식은 조립 지점이 본다. 화면에 두면 그 탭이
+  // 열리지 않는 동안 아무도 보지 않는다
   useEffect(function () {
     if (booted.current) return;
     booted.current = true;
-    (async function () {
-      await session.reapStaleSubscription();
-      if (AutoStartMarker.consume()) {
-        FileTrace.append('vis', '자동 시작 표식을 확인했습니다');
-        await start();
-      }
-      refresh();
-    })();
+    refresh();
   }, []);
 
   useEffect(function () {
