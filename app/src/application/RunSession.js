@@ -21,6 +21,7 @@ export const MAX_MS = 4 * 60 * 60 * 1000;   // 달리기 상한 4시간. 잊고 
 // 것은 설정에서 켜면 되고, 지하는 나가야 하고, 인터넷은 신호가 오는 곳으로 가야 한다.
 // 「시작할 수 없습니다」 하나로 적으면 무엇을 해야 하는지 알 수 없다.
 export const BLOCK = {
+  permission: 'location-permission',  // 권한이 거부됐다. 앱 안에서는 되돌릴 수 없다
   service: 'location-service',   // 기기의 위치 서비스가 꺼졌다
   waiting: 'locating',           // 켜져 있고 아직 첫 위치를 기다린다
   fix: 'no-fix',                 // 기다렸는데 오지 않는다. 지하·실내다
@@ -54,7 +55,16 @@ export function createRunSession(deps) {
   // 시작할 수 있는 상태인가. 확인하기 전에는 모르는 상태로 둔다.
   // 참으로 두고 시작하면 지하에서 눌렀을 때 시작이 실패하며 바로 풀리고,
   // 거짓으로 두면 앱을 켠 직후 몇 초 동안 이유 없이 막힌다
-  let ready = { fix: null, services: null, online: null };
+  // 권한은 셋으로 갈린다. 아직 안 물음 · 허용 · 거부.
+  // 이 셋을 하나로 묶으면 「물어보면 되는 상태」와 「설정에 가야 하는 상태」가 섞이고,
+  // 그러면 물어볼 수 있는데도 막아 버린다. 새 기기가 그 상태에 갇혔다
+  let ready = { permission: null, fix: null, services: null, online: null };
+  // 권한을 한 번은 스스로 묻는다. 버튼을 누를 때까지 기다리면 사용자는 왜 안 되는지 모른다.
+  // 두 번 이상 묻지 않는 이유는 iOS 가 한 번만 대화상자를 띄우기 때문이다.
+  // 거부된 뒤에는 아무리 불러도 조용히 거부가 돌아온다
+  let askedPermission = false;
+  // 막힌 사유가 바뀔 때만 기록한다. 10초마다 같은 줄을 남기면 기록이 쓸모를 잃는다
+  let notedBlocks = null;
 
   function say(text) {
     if (!speech) return;
@@ -66,13 +76,62 @@ export function createRunSession(deps) {
     if (cue) cue.play();
   }
 
+  // 권한을 셋 중 하나로 읽는다. 전경 권한이 기준이다. 배경 권한은 시작할 때 따로 본다.
+  // 물어볼 수 없는 상태(어댑터가 없는 시험 대역)는 허용으로 본다
+  async function readPermission() {
+    if (!location.getPermissions) return 'granted';
+    try {
+      const p = await location.getPermissions();
+      if (p.foreground === 'granted') return 'granted';
+      if (p.foreground === 'denied') return 'denied';
+      return 'undetermined';
+    } catch (e) {
+      return 'undetermined';   // 모르는 것을 거부로 보면 물어볼 길을 막는다
+    }
+  }
+
+  // 달리는 중인가. 끝난 달리기는 화면에 남지만 달리는 중은 아니다.
+  // 이 구분이 없어서 종료 뒤에 다시 시작할 길이 잠겼다
+  function inProgress() {
+    return !!(run && run.state === Run.STATE.running);
+  }
+
+  // 화면에 실어 보낼 시작 조건. 달리는 중에는 막지 않고 알리지도 않는다.
+  // 이미 시작한 달리기를 화면 상태로 끊으면 기록이 사라지고, 달리면서 배너를 읽지도 않는다.
+  // 끝난 뒤에는 다시 시작해야 하므로 조건을 그대로 돌려준다.
+  //
+  // 버튼이 눌리는지까지 여기서 정한다. 화면이 상태를 보고 스스로 판단하면 그 식은
+  // 시험 밖에 남고, 실제로 그 자리에서 결함 둘이 났다. 화면은 참·거짓만 읽는다
+  function startFields() {
+    return {
+      canStart: inProgress() ? false : canStart(),
+      blocks: inProgress() ? [] : blocks(),
+      // 지금 여기를 표시할 수 있는가. 달리는 중이어야 하고 위치를 한 건은 받았어야 한다.
+      // 위치가 없으면 표시할 좌표가 없다
+      canMark: inProgress() && !!(run.track && run.track.prev),
+      // 종료할 수 있는가. 달리는 중일 때만
+      canFinish: inProgress(),
+      // 주 버튼(달리기·종료 토글)이 눌리는가. 화면이 상태를 보고 두 값을 고르면
+      // 그 고르는 식이 다시 시험 밖으로 나간다. 그래서 한 값으로 준다.
+      // 달리는 중에는 언제나 종료할 수 있고, 그 밖에는 시작 조건을 따른다
+      canToggle: inProgress() ? true : canStart()
+    };
+  }
+
   // 못 하는 것들. 비어 있으면 시작할 수 있다.
   //
   // 위치는 셋 중 하나만 적는다. 서비스가 꺼져 있으면 위치가 안 오는 것은 당연한 결과이므로
   // 원인만 적는다. 결과까지 같이 적으면 사용자가 두 가지를 고쳐야 한다고 읽는다
   function blocks() {
     const out = [];
-    if (ready.services === false) out.push(BLOCK.service);
+    // 아직 묻지 않았으면 막지 않는다. 막으면 물어볼 경로가 사라진다.
+    // 달리기를 누르는 것이 곧 권한을 묻는 것이고, 그 뒤에 조건이 다시 선다
+    if (ready.permission === 'undetermined') {
+      if (ready.online === false) out.push(BLOCK.offline);
+      return out;
+    }
+    if (ready.permission === 'denied') out.push(BLOCK.permission);
+    else if (ready.services === false) out.push(BLOCK.service);
     else if (ready.fix === null) out.push(BLOCK.waiting);
     else if (ready.fix === false) out.push(BLOCK.fix);
     if (ready.online === false) out.push(BLOCK.offline);
@@ -90,21 +149,49 @@ export function createRunSession(deps) {
   // 그 와중에 한 건을 따로 달라고 하면 수신에 끼어든다. 그리고 달리는 중에 끊겼다고
   // 멈추지 않으므로 물어서 얻을 것이 없다
   async function checkReadiness() {
-    if (run && run.state === Run.STATE.running) return { canStart: false, blocks: [], running: true };
+    if (inProgress()) return { canStart: false, blocks: [], running: true };
+
+    ready.permission = await readPermission();
+
+    // 아직 묻지 않은 상태면 여기서 묻는다. 앱을 열면 대화상자가 뜨는 것이 사용자가
+    // 기대하는 순서고, 버튼이 잠긴 화면에서 이유를 읽게 만드는 것보다 짧다
+    if (ready.permission === 'undetermined' && !askedPermission && location.requestPermissions) {
+      askedPermission = true;
+      trace.append('vis', '위치 권한을 묻습니다');
+      try {
+        const asked = await location.requestPermissions();
+        trace.append('vis', '권한 응답. 전경 ' + asked.foreground + ' / 배경 ' + asked.background);
+        ready.permission = asked.foreground === 'granted' ? 'granted'
+          : (asked.foreground === 'denied' ? 'denied' : 'undetermined');
+      } catch (e) {
+        trace.append('err', '권한을 묻지 못했습니다: ' + e.message);
+      }
+    }
 
     ready.services = location.servicesEnabled ? await location.servicesEnabled() : true;
     ready.online = network ? await network.isOnline() : true;
 
-    if (ready.services === false) {
-      // 꺼진 서비스에 위치를 달라고 하면 8초를 기다리고 못 받는다. 물을 필요가 없다
+    // 권한이 없으면 위치를 묻지 않는다. 호출이 바로 거부되고, 그 실패를 「위치가 안 온다」로
+    // 읽으면 지하와 구분되지 않는다. 실제로 새 기기가 그렇게 잘못 안내됐다
+    if (ready.permission !== 'granted' || ready.services === false) {
       ready.fix = null;
     } else {
       const fix = await locate();
       ready.fix = fix != null;
       if (!ready.fix) trace.append('err', '위치를 한 건도 받지 못했습니다');
     }
+    noteBlocks();
     onChange();
     return { canStart: canStart(), blocks: blocks() };
+  }
+
+  // 막힌 사유를 기기 기록에 남긴다. 실측에서 화면을 볼 수 없으므로, 왜 시작하지 못했는지는
+  // 이 줄로만 알 수 있다. 실제로 새 기기가 막혔을 때 기록에 사유가 없어 추측해야 했다
+  function noteBlocks() {
+    const now2 = blocks().join(',') || '통과';
+    if (now2 === notedBlocks) return;
+    notedBlocks = now2;
+    trace.append('mark', '시작 조건: ' + now2);
   }
 
   // 연결이 바뀌었다는 통지. 물어보지 않고 받은 값을 그대로 쓴다
@@ -112,6 +199,7 @@ export function createRunSession(deps) {
     if (ready.online === online) return;
     ready.online = online;
     trace.append('vis', online ? '인터넷 연결됨' : '인터넷 끊김');
+    noteBlocks();
     onChange();
   }
 
@@ -119,7 +207,10 @@ export function createRunSession(deps) {
   // 화면에서 받으면 화면이 없는 동안 상태가 낡는다
   if (network && network.subscribe) network.subscribe(setOnline);
 
-  async function start() {
+  // 시작해도 되는지 묻고, 필요하면 권한까지 받아 온다.
+  // start 에서 떼어낸 이유는 그 함수가 「허락을 받는 일」과 「달리기를 세우는 일」을
+  // 겸하고 있었기 때문이다. 관문이 그것을 잡았다
+  async function clearToStart() {
     // 한 번도 확인하지 않았으면 여기서 확인한다. 화면이 버튼을 잠그므로 보통은 이미
     // 확인된 상태로 들어오지만, 확인하지 않은 것을 「된다」 로 읽고 시작하지는 않는다
     if (ready.fix === null || ready.services === null || ready.online === null) {
@@ -127,17 +218,28 @@ export function createRunSession(deps) {
     }
 
     // 시작할 수 없는 상태에서는 시작을 시도하지 않는다. 시도하면 배경 구독을 걸다가
-    // 실패하고, 화면에는 눌렀다가 바로 풀린 것으로 보인다. 그 자리에서 사용자는
-    // 앱이 고장났다고 읽는다
+    // 실패하고, 화면에는 눌렀다가 바로 풀린 것으로 보인다
     if (!canStart()) {
       trace.append('mark', '시작 조건이 아직 아닙니다: ' + blocks().join(','));
-      return { started: false, reason: 'not-ready', blocks: blocks() };
+      return { ok: false, result: { started: false, reason: 'not-ready', blocks: blocks() } };
     }
 
     const p = await location.requestPermissions();
+    // 물어본 결과를 조건에 반영한다. 반영하지 않으면 거부된 뒤에도 버튼이 살아 있어
+    // 누를 때마다 같은 실패를 반복한다
+    ready.permission = p.foreground === 'granted' ? 'granted'
+      : (p.foreground === 'denied' ? 'denied' : 'undetermined');
     if (p.background !== 'granted') {
-      return { started: false, reason: 'background-permission', permissions: p };
+      onChange();
+      return { ok: false, result: { started: false, reason: 'background-permission', permissions: p } };
     }
+    return { ok: true, permissions: p };
+  }
+
+  async function start() {
+    const cleared = await clearToStart();
+    if (!cleared.ok) return cleared.result;
+    const p = cleared.permissions;
 
     run = Run.createRun({ spots: course.spots.slice() });
     Run.start(run, now());
@@ -418,9 +520,9 @@ export function createRunSession(deps) {
       state: 'ready', dist: 0, ms: 0, pace: null, target: null, targetDist: null,
       arrivals: [], spots: course.spots.slice(), fixCount: 0, gapMax: 0,
       here: lastKnown, segments: [], hasCourse: course.path.length > 0,
-      canStart: canStart(), blocks: blocks(),
       courseName: course.name || '', shelf: shelfView(), shelfFull: Shelf.isFull(shelf),
-      suggested: suggestView()
+      suggested: suggestView(),
+      ...startFields()
     };
   }
 
@@ -449,11 +551,10 @@ export function createRunSession(deps) {
       // 결손으로 끊긴 조각들. 이어 그리면 지나지 않은 길이 경로로 보인다
       segments: t ? segments(t) : [],
       hasCourse: course.path.length > 0,
-      // 달리는 중에는 막지 않는다. 이미 시작한 달리기를 화면 상태로 끊으면 기록이 사라진다
-      canStart: false, blocks: [],
       courseName: course.name || '', shelf: shelfView(), shelfFull: Shelf.isFull(shelf),
       // 달리는 중에는 추천하지 않는다. 코스를 갈 수 없는 상태에서 권하면 누를 곳이 없다
-      suggested: []
+      suggested: inProgress() ? [] : suggestView(),
+      ...startFields()
     };
   }
 

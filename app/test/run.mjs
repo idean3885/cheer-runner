@@ -241,6 +241,31 @@ test('기록 실패가 측정을 멈추지 않는다', function () {
   assert(/catch/.test(body), '기록 실패를 삼키지 않습니다. 측정이 함께 멈춥니다');
 });
 
+/* ── 화면 관문 ──────────────────────────────────────────────────
+   버튼이 눌리는지 화면이 스스로 판단하면 그 식은 시험 밖에 남는다. 실제로 그 자리에서
+   결함 둘이 났다. 첫 설치에서 권한을 물어볼 길이 잠겼고, 종료 뒤에 다시 시작할 길이 잠겼다.
+   둘 다 세션 시험은 통과한 상태였다. 그래서 화면이 참·거짓만 읽는지를 소스로 본다. */
+
+const runScreenSrc = readFileSync(new URL('../src/presentation/screen/RunScreen.js', import.meta.url), 'utf8');
+
+test('화면은 버튼 상태를 스스로 계산하지 않는다', function () {
+  const disabled = runScreenSrc.match(/disabled=\{[^}]*\}/g) || [];
+  assert(disabled.length > 0, 'disabled 식을 찾지 못했습니다');
+  disabled.forEach(function (expr) {
+    // busy 는 화면의 사실이다. 누른 뒤 응답을 기다리는 중이라는 뜻이고 세션이 모른다
+    const rest = expr.replace(/busy/g, '').replace(/v\.can[A-Za-z]+/g, '');
+    assert(!/state|running|blocks|length/.test(rest),
+      '화면이 상태를 보고 판단합니다: ' + expr);
+  });
+});
+
+test('세션이 버튼 상태를 내보낸다', function () {
+  const sessionSrc = readFileSync(new URL('../src/application/RunSession.js', import.meta.url), 'utf8');
+  ['canStart', 'canMark', 'canFinish', 'canToggle'].forEach(function (k) {
+    assert(sessionSrc.indexOf(k + ':') > 0, k + ' 를 내보내지 않습니다');
+  });
+});
+
 /* ── 실행 ─────────────────────────────────────────────────────── */
 let pass = 0, fail = 0;
 const t0 = Date.now();
