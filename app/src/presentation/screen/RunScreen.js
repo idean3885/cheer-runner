@@ -9,11 +9,25 @@
 // 색은 적지 않고 theme.js 에서 가져온다. 같은 색이 여러 자리에 적히면 한쪽만 바뀐다.
 
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline, Circle, PROVIDER_DEFAULT } from 'react-native-maps';
 import { runSession } from '../../application/wiring';
+import { BLOCK } from '../../application/RunSession';
 import { WAYPOINT_RAD } from '../../domain/constants';
 import { COLOR } from '../theme';
+
+// 시작 조건을 다시 보는 간격. 위치 서비스는 바뀌었다고 알려 주지 않으므로 물어봐야 한다.
+// 앞으로 돌아올 때도 보므로 이 간격이 유일한 통로는 아니다
+const RECHECK_MS = 10000;
+
+// 못 하는 사유마다 무엇을 해야 하는지 적는다. 「시작할 수 없습니다」 하나로는
+// 사용자가 할 일을 알 수 없다
+const BANNER = {
+  [BLOCK.service]: '위치 서비스가 꺼져 있습니다. 기기 설정에서 위치를 켜 주세요',
+  [BLOCK.waiting]: '위치를 받는 중입니다',
+  [BLOCK.fix]: '위치를 받지 못하고 있습니다. 지하나 실내면 하늘이 보이는 곳으로 나가 주세요',
+  [BLOCK.offline]: '인터넷이 끊겨 지도를 그릴 수 없습니다. 연결을 확인해 주세요'
+};
 
 function fmtDur(ms) {
   const s = Math.floor(ms / 1000);
@@ -36,12 +50,18 @@ export function RunScreen() {
   function refresh() { setV(runSession.view()); }
 
   useEffect(function () {
-    // 달리기 전에도 지도를 띄운다. 위치를 한 번 받아 러너 자리에 맞춘다
-    runSession.locate();
+    // 달리기 전에도 지도를 띄운다. 위치를 한 번 받아 러너 자리에 맞추고,
+    // 그 결과가 시작할 수 있는 상태인지를 함께 가른다
+    runSession.checkReadiness();
     const off = runSession.onChange(refresh);
     // 화면이 켜져 있을 때만 시계를 돌린다. 배경에서는 위치 수신이 갱신을 부른다
     const t = setInterval(refresh, 1000);
-    return function () { off(); clearInterval(t); };
+    const recheck = setInterval(function () { runSession.checkReadiness(); }, RECHECK_MS);
+    // 설정에서 위치를 켜고 돌아오는 길이 있다. 돌아온 자리에서 다시 본다
+    const sub = AppState.addEventListener('change', function (st) {
+      if (st === 'active') runSession.checkReadiness();
+    });
+    return function () { off(); clearInterval(t); clearInterval(recheck); sub.remove(); };
   }, []);
 
   async function onStart() {
@@ -49,9 +69,12 @@ export function RunScreen() {
     const r = await runSession.start();
     setBusy(false);
     if (!r.started) {
-      setNotice(r.reason === 'background-permission'
-        ? '위치 권한을 «항상 허용» 으로 주어야 화면이 꺼진 뒤에도 기록됩니다'
-        : '시작하지 못했습니다: ' + (r.error || r.reason));
+      // 시작 조건이 아닌 것은 배너가 이미 말하고 있다. 같은 말을 두 자리에 적지 않는다
+      if (r.reason !== 'not-ready') {
+        setNotice(r.reason === 'background-permission'
+          ? '위치 권한을 «항상 허용» 으로 주어야 화면이 꺼진 뒤에도 기록됩니다'
+          : '시작하지 못했습니다: ' + (r.error || r.reason));
+      }
       return;
     }
     setNotice(null);
@@ -91,8 +114,20 @@ export function RunScreen() {
     refresh();
   }
 
+  // 달리는 중에는 배너를 띄우지 않는다. 이미 시작한 달리기는 막지 않으므로
+  // 알려도 할 일이 없고, 달리면서 읽을 수 있는 것도 아니다
+  const banner = running ? null : (v.blocks || []).map(function (b) { return BANNER[b]; }).filter(Boolean);
+
   return (
     <View style={s.root}>
+      {banner && banner.length ? (
+        <View style={s.banner}>
+          {banner.map(function (line, i) {
+            return <Text key={i} style={s.bannerText}>{line}</Text>;
+          })}
+        </View>
+      ) : null}
+
       <View style={s.head}>
         <Text style={s.km}>{km}</Text>
         <Text style={s.kmUnit}>km</Text>
@@ -108,7 +143,7 @@ export function RunScreen() {
 
       <View style={s.btns}>
         <Big label={running ? '종료' : '달리기'} tone={running ? 'stop' : 'go'}
-          disabled={busy} onPress={running ? onFinish : onStart} />
+          disabled={busy || (!running && !v.canStart)} onPress={running ? onFinish : onStart} />
         <Big label="여기 표시" tone="mark" disabled={!running || busy} onPress={onMarkHere} />
       </View>
 
@@ -215,6 +250,9 @@ function Big(props) {
 
 const s = StyleSheet.create({
   root: { flex: 1, paddingHorizontal: 16 },
+  banner: { marginTop: 6, marginHorizontal: -4, paddingVertical: 9, paddingHorizontal: 12,
+    borderRadius: 10, backgroundColor: COLOR.bannerBg, borderWidth: 1, borderColor: COLOR.bannerLine },
+  bannerText: { fontSize: 12.5, lineHeight: 18, color: COLOR.bannerInk, fontWeight: '600' },
   head: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', marginTop: 8 },
   km: { fontSize: 64, fontWeight: '800', fontVariant: ['tabular-nums'], color: COLOR.ink },
   kmUnit: { fontSize: 18, color: COLOR.inkSoft, marginBottom: 12, marginLeft: 4 },

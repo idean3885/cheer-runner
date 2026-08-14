@@ -37,10 +37,13 @@ export function fakeLocation(opts) {
     running: false,
     startCalls: 0,
     stopCalls: 0,
+    // 기기 위치 서비스. 권한과 다른 값이다. 권한을 줬는데 설정에서 끈 상태가 있다
+    services: o.services !== false,
     permissions: o.permissions || { foreground: 'granted', background: 'granted' }
   };
   return {
     state,
+    servicesEnabled: async function () { return state.services; },
     requestPermissions: async function () { return state.permissions; },
     getPermissions: async function () { return state.permissions; },
     startBackground: async function () {
@@ -52,8 +55,30 @@ export function fakeLocation(opts) {
     isBackgroundRunning: async function () { return state.running; },
     watchForeground: async function () { return { remove: function () {} }; },
     once: async function () {
+      // 운영 어댑터는 기다려도 안 오면 없음을 돌려준다. 지하가 그 상태다.
+      // 던지는 쪽도 함께 둔다. 두 실패가 같은 결과로 보여야 한다
+      if (o.noFix) return null;
       if (o.failOnce) throw new Error('위치를 받지 못했습니다');
       return platformFix(o.at || {});
+    }
+  };
+}
+
+// 연결 대역. 인터넷에 닿는지만 답한다
+export function fakeNetwork(opts) {
+  const o = opts || {};
+  const state = { online: o.online !== false, listeners: [] };
+  return {
+    state,
+    isOnline: async function () { return state.online; },
+    subscribe: function (fn) {
+      state.listeners.push(fn);
+      return { remove: function () { state.listeners = state.listeners.filter(function (f) { return f !== fn; }); } };
+    },
+    // 시험이 상태를 바꿀 때 쓴다. 플랫폼이 통지하는 자리다
+    change: function (online) {
+      state.online = online;
+      state.listeners.forEach(function (fn) { fn(online); });
     }
   };
 }

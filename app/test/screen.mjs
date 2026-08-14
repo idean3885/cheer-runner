@@ -124,5 +124,21 @@ await shot(dev, '2-running');
 
 if (!(await alive(dev))) fail('앱이 죽었습니다. 그림만으로는 알기 어려운 상태입니다');
 
-console.log('\n그림 ' + 2 + '장을 만들었습니다. ' + outDir);
+// 3. 위치를 받지 못하는 화면. 지하에서 달리기를 눌렀을 때의 자리다.
+// 시뮬레이터에서 지하를 만들 수는 없으므로 위치 접근을 거두어 같은 결과를 만든다
+await run('xcrun', ['simctl', 'terminate', dev, BUNDLE], { allowFail: true });
+await run('xcrun', ['simctl', 'privacy', dev, 'revoke', 'location', BUNDLE], { allowFail: true });
+['course.json', 'runs.jsonl', 'trace.jsonl', 'session.json', 'auto-run', 'auto-start']
+  .forEach(function (f) { fs.rmSync(path.join(docs, f), { force: true }); });
+await run('xcrun', ['simctl', 'launch', dev, BUNDLE]);
+// 위치 한 건을 기다리는 한계가 8초다. 그 뒤에 판정이 선다
+await sleep(14000);
+console.log('위치를 못 받는 화면');
+await shot(dev, '3-blocked');
+await run('xcrun', ['simctl', 'privacy', dev, 'grant', 'location-always', BUNDLE], { allowFail: true });
+
+if (!(await alive(dev))) fail('앱이 죽었습니다. 그림만으로는 알기 어려운 상태입니다');
+
+console.log('\n그림 ' + 3 + '장을 만들었습니다. ' + outDir);
 console.log('보는 것: 시간이 흐르는가 · 페이스가 사람 범위인가 · 지도와 지점이 그려지는가 · 빈 공간이 남는가');
+console.log('        못 받는 화면에서 배너가 맨 위에 있는가 · 달리기 버튼이 잠겼는가');

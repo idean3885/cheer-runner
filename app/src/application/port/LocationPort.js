@@ -29,6 +29,11 @@
  * @property {() => Promise<boolean>} isBackgroundRunning
  * @property {(onFix:(fix:PlatformFix)=>void) => Promise<{remove:()=>void}>} watchForeground
  *   화면이 켜져 있을 때만. 배경이 0건일 때 위치 자체의 문제인지 가르는 데 쓴다
+ * @property {() => Promise<boolean>} servicesEnabled
+ *   기기의 위치 서비스가 켜져 있는가. 권한과 다른 사실이고 사용자가 할 일도 다르다
+ * @property {() => Promise<PlatformFix|null>} once
+ *   위치 한 건. 정해진 시간 안에 못 받으면 없음을 돌려준다.
+ *   기다리다 돌아오지 않으면 화면이 「받는 중」에 머물고, 못 받는다는 사실을 말할 수 없다
  */
 
 export const PERMISSION = {

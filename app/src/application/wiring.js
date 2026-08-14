@@ -10,6 +10,7 @@
 import { ExpoLocationAdapter, setSink } from '../infrastructure/location/ExpoLocationAdapter';
 import { ExpoSpeechAdapter } from '../infrastructure/speech/ExpoSpeechAdapter';
 import { ExpoCueAdapter } from '../infrastructure/sound/ExpoCueAdapter';
+import { ExpoNetworkAdapter } from '../infrastructure/network/ExpoNetworkAdapter';
 import { FileTrace } from '../infrastructure/storage/FileTrace';
 import { SessionStore } from '../infrastructure/storage/SessionStore';
 import { CourseStore } from '../infrastructure/storage/CourseStore';
@@ -32,6 +33,7 @@ const run = createRunSession({
   location: ExpoLocationAdapter,
   speech: ExpoSpeechAdapter,
   cue: ExpoCueAdapter,
+  network: ExpoNetworkAdapter,
   session: SessionStore,
   store: CourseStore,
   trace: FileTrace,

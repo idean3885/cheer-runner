@@ -38,6 +38,11 @@ export const COLOR = {
   cardLine: 'rgba(255,255,255,0.70)',
   divider: 'rgba(18,18,18,0.07)',
 
+  // 못 하는 상태를 알리는 띠배너. 배경 계열의 웜 쪽에서 뽑아 경고로 읽히되 튀지 않게 둔다
+  bannerBg: '#f7e6c4',
+  bannerLine: '#e6cf9e',
+  bannerInk: '#6b4a00',      // 배너 바탕과 8.1:1
+
   // 상태
   warn: '#9a6700',
   ok: '#335803',

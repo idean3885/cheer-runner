@@ -13,7 +13,7 @@ import { createRunSession, OWNER as RUN } from '../src/application/RunSession.js
 import { createDiagnosticSession, OWNER as DIAGNOSTIC } from '../src/application/DiagnosticSession.js';
 import { createBackgroundRouter } from '../src/application/BackgroundRouter.js';
 import { WAYPOINT_RAD } from '../src/domain/constants.js';
-import { fakeClock, fakeTrace, fakeSession, fakeLocation, fakeSpeech, fakeCue } from './doubles.mjs';
+import { fakeClock, fakeTrace, fakeSession, fakeLocation, fakeSpeech, fakeCue, fakeNetwork } from './doubles.mjs';
 
 const cases = [];
 function test(name, fn) { cases.push({ name, fn }); }
@@ -56,14 +56,15 @@ function build(opts) {
   const location = fakeLocation(o.location);
   const speech = fakeSpeech(o.speech);
   const cue = fakeCue();
+  const network = fakeNetwork(o.network);
   const store = fakeStore(o.course);
   let changes = 0;
   const s = createRunSession({
-    location, speech, cue, session, store,
+    location, speech, cue, network, session, store,
     now: clock.now,
     onChange: function () { changes++; }
   });
-  return { s, clock, session, location, speech, cue, store, changed: function () { return changes; } };
+  return { s, clock, session, location, speech, cue, network, store, changed: function () { return changes; } };
 }
 
 /* ── 시작과 종료 ──────────────────────────────────────────────── */
@@ -214,6 +215,98 @@ test('위치를 받기 전에는 여기 표시가 되지 않는다', async funct
   const r = s.markHere();
   assert(r.marked === false, '위치 없이 표시됐습니다');
   assert(r.reason === 'no-position', '사유가 다릅니다: ' + r.reason);
+});
+
+/* ── 시작 조건 ────────────────────────────────────────────────── */
+
+test('위치를 한 건도 못 받으면 시작하지 않는다', async function () {
+  // 지하가 이 상태다. 시작을 시도하면 구독을 걸다 실패하고 눌렀다 바로 풀린 것으로 보인다
+  const { s, location, session } = build({ location: { noFix: true } });
+  const r = await s.start();
+  assert(r.started === false, '위치 없이 시작했습니다');
+  assert(r.reason === 'not-ready', '사유가 다릅니다: ' + r.reason);
+  assert(r.blocks.indexOf('no-fix') >= 0, '사유에 위치가 없습니다: ' + JSON.stringify(r.blocks));
+  assert(location.state.startCalls === 0, '구독을 걸었습니다');
+  assert(session.read() === null, '세션을 남겼습니다');
+});
+
+test('위치 서비스가 꺼져 있으면 그것만 사유로 적는다', async function () {
+  // 꺼진 서비스에 위치를 달라고 하면 기다리다 못 받는다. 원인만 적어야 할 일이 하나가 된다
+  const { s } = build({ location: { services: false, noFix: true } });
+  await s.checkReadiness();
+  const v = s.view();
+  assert(v.canStart === false, '서비스가 꺼졌는데 시작할 수 있다고 봅니다');
+  assert(v.blocks.length === 1 && v.blocks[0] === 'location-service',
+    '사유가 하나가 아닙니다: ' + JSON.stringify(v.blocks));
+});
+
+test('인터넷이 끊기면 시작하지 않는다', async function () {
+  // 거리와 응원은 끊겨도 돌지만 지도를 못 그리면 지점을 찍을 수 없다
+  const { s, location } = build({ network: { online: false } });
+  const r = await s.start();
+  assert(r.started === false, '인터넷 없이 시작했습니다');
+  assert(r.blocks.indexOf('offline') >= 0, '사유에 인터넷이 없습니다: ' + JSON.stringify(r.blocks));
+  assert(location.state.startCalls === 0, '구독을 걸었습니다');
+});
+
+test('상태가 돌아오면 다시 시작할 수 있다', async function () {
+  const { s, network } = build({ network: { online: false } });
+  await s.checkReadiness();
+  assert(s.view().canStart === false, '끊긴 상태에서 시작할 수 있다고 봅니다');
+
+  network.change(true);
+  assert(s.view().canStart === true, '연결이 돌아왔는데 여전히 막혀 있습니다: '
+    + JSON.stringify(s.view().blocks));
+
+  const r = await s.start();
+  assert(r.started === true, '돌아온 뒤에도 시작하지 못했습니다: ' + r.reason);
+});
+
+test('달리는 중에 끊겨도 달리기는 멈추지 않는다', async function () {
+  // 이미 시작한 달리기를 화면 상태로 끊으면 기록이 사라진다
+  const { s, network, clock, location } = build();
+  await s.start();
+  s.onFixes({ error: null, fixes: [fix({ t: T0 })] });
+
+  network.change(false);
+  for (let i = 1; i <= 20; i++) {
+    clock.advance(1000);
+    s.onFixes({ error: null, fixes: [fix({ t: T0 + i * 1000, lat: north(3 * i) })] });
+  }
+  const v = s.view();
+  assert(v.state === 'running', '끊겼다고 달리기가 멈췄습니다 (' + v.state + ')');
+  assert(v.dist > 40, '거리가 쌓이지 않았습니다: ' + Math.round(v.dist) + 'm');
+  assert(location.state.running === true, '구독이 끊겼습니다');
+  assert(v.blocks.length === 0, '달리는 중에 배너를 띄웁니다: ' + JSON.stringify(v.blocks));
+});
+
+test('달리는 중에는 시작 조건을 다시 묻지 않는다', async function () {
+  // 배경 구독이 위치를 받고 있는 중에 한 건을 따로 달라고 하면 수신에 끼어든다
+  const { s } = build();
+  await s.start();
+  const before = s.view().state;
+  const r = await s.checkReadiness();
+  assert(r.running === true, '달리는 중인데 조건을 물었습니다');
+  assert(s.view().state === before, '상태가 바뀌었습니다');
+});
+
+test('위치를 못 받는 동안에는 지난 자리를 받은 것으로 보지 않는다', async function () {
+  // 지난번 값을 돌려주면 지금 못 받는 상태가 받은 것으로 읽힌다
+  const clock = fakeClock(T0);
+  let noFix = false;
+  const location = fakeLocation();
+  location.once = async function () { return noFix ? null : { coords: { latitude: LAT, longitude: LON }, timestamp: T0 }; };
+  const s = createRunSession({
+    location, speech: fakeSpeech(), cue: fakeCue(), network: fakeNetwork(),
+    session: fakeSession(), store: fakeStore({ spots: [], path: [] }), now: clock.now
+  });
+  await s.checkReadiness();
+  assert(s.view().canStart === true, '받았는데 막혔습니다');
+
+  noFix = true;
+  await s.checkReadiness();
+  assert(s.view().canStart === false, '못 받는데 시작할 수 있다고 봅니다');
+  assert(s.view().here != null, '지도 자리까지 지웠습니다. 마지막으로 안 자리는 남아야 합니다');
 });
 
 /* ── 조작 확인 소리 ───────────────────────────────────────────── */
