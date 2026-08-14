@@ -106,9 +106,11 @@ presentation  ──>  application  ──>  domain
 
 | 포트 (인터페이스) | 하는 일 | 운영 구현체 | 시험 대역 |
 |---|---|---|---|
-| `LocationPort` | 위치 구독 시작·중지 | `ExpoLocationAdapter` | `fakeLocation` |
+| `LocationPort` | 위치 구독 시작·중지, 서비스 여부, 위치 한 건 | `ExpoLocationAdapter` | `fakeLocation` |
 | `SpeechPort` | 음성 출력과 그 결과 | `ExpoSpeechAdapter` | `fakeSpeech` |
-| 저장 | 코스·달리기 기록·진단 기록 | `CourseStore` · `SessionStore` · `FileTrace` (파일) | `fakeStore` · `fakeSession` · `fakeTrace` |
+| `CuePort` | 조작 확인 알림음 | `ExpoCueAdapter` | `fakeCue` |
+| `NetworkPort` | 인터넷에 닿는가, 바뀌면 알림 | `ExpoNetworkAdapter` | `fakeNetwork` |
+| 저장 | 코스·보관함·달리기 기록·진단 기록 | `CourseStore` · `SessionStore` · `FileTrace` (파일) | `fakeStore` · `fakeSession` · `fakeTrace` |
 | 시계 | 현재 시각 | 주입한 `Date.now` | `fakeClock` |
 
 시계를 포트 인터페이스로 두지 않고 함수 하나를 주입한다. 되돌려 주는 값이 숫자 하나뿐이라 인터페이스를 둘 이유가 없다. 그래도 주입은 한다. 도메인이 `Date.now()` 를 직접 부르면 틱 경계·결손 판정·무이동 판정 시험을 짤 수 없다.
@@ -273,10 +275,11 @@ app/
       Run.js          시작 · 위치 받기 · 종료 · 현재 목표. 상태 전이
       Track.js        늘리기 · 결손 표시 · 틱과 창 페이스
       Course.js       여기 표시 · 승격 · 고정 · 제거
+      Shelf.js        코스 보관함. 칸 수 · 덮어쓰기 · 시작 자리 추천
       geo.js          거리 · 페이스 · 경로까지의 거리
       constants.js    상수와 그 근거
     application/
-      port/           LocationPort, SpeechPort
+      port/           LocationPort, SpeechPort, CuePort, NetworkPort
       RunSession.js       달리기 유스케이스
       DiagnosticSession.js 진단 유스케이스
       BackgroundRouter.js  배경 위치를 누구에게 줄지 정한다
@@ -284,9 +287,12 @@ app/
     infrastructure/
       location/       expo-location 어댑터 (배경 작업 등록)
       speech/         expo-speech 어댑터
-      storage/        기록 · 세션 · 코스 · 자동 시작 표식
+      sound/          expo-audio 어댑터. 조작 확인 소리
+      network/        expo-network 어댑터
+      storage/        기록 · 세션 · 코스 · 보관함 · 자동 시작 표식
     presentation/
-      screen/         달리기, 진단
+      theme.js        색 정본. 화면은 값을 적지 않는다
+      screen/         달리기, 코스, 진단
   test/
     domain.mjs        도메인 행위와 불변식
     session.mjs       응용 계층과 배경 분배

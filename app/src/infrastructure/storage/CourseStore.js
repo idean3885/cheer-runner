@@ -9,6 +9,7 @@
 import { File, Paths } from 'expo-file-system';
 
 const COURSE = 'course.json';
+const SHELF = 'courses.json';
 const RUNS = 'runs.jsonl';
 const RUNS_MAX = 50;
 
@@ -31,6 +32,21 @@ export const CourseStore = {
       const f = handle(COURSE);
       if (!f.exists) f.create();
       f.write(JSON.stringify(course));
+      return true;
+    } catch (e) { return false; }
+  },
+
+  // 보관함. 지금 달리는 코스(course.json)와 따로 둔다.
+  //
+  // 한 파일에 넣으면 달리는 중 지점을 찍을 때마다 보관함 전체를 다시 쓴다. 그 쓰기가
+  // 실패하면 저장해 둔 코스까지 잃는다. 수명이 다른 것을 같은 파일에 두지 않는다
+  readShelf() { return readJSON(SHELF, {}); },
+
+  writeShelf(shelf) {
+    try {
+      const f = handle(SHELF);
+      if (!f.exists) f.create();
+      f.write(JSON.stringify(shelf));
       return true;
     } catch (e) { return false; }
   },

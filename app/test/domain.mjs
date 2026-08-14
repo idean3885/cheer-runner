@@ -9,8 +9,9 @@
 import * as Run from '../src/domain/Run.js';
 import * as Track from '../src/domain/Track.js';
 import * as Course from '../src/domain/Course.js';
+import * as Shelf from '../src/domain/Shelf.js';
 import { haversine, paceOf, distanceToPath } from '../src/domain/geo.js';
-import { ACC_CUT, SPEED_MAX, GAP_S, WAYPOINT_RAD, COURSE_TOL } from '../src/domain/constants.js';
+import { ACC_CUT, SPEED_MAX, GAP_S, WAYPOINT_RAD, COURSE_TOL, SAVED_MAX } from '../src/domain/constants.js';
 
 const cases = [];
 function test(name, fn) { cases.push({ name, fn }); }
@@ -368,6 +369,110 @@ test('경로까지의 거리는 선분 위로 잰다', function () {
   assert(mid < 1, '선분 위 점이 ' + mid.toFixed(1) + 'm 떨어졌다고 나옵니다');
   const endOnly = Math.min(haversine(north(500), LON, LAT, LON), haversine(north(500), LON, north(1000), LON));
   assert(endOnly > 400, '견줄 값이 잘못 잡혔습니다');
+});
+
+/* ── 보관함 ───────────────────────────────────────────────────── */
+
+function courseWith(spec) {
+  const s = spec || {};
+  return Course.createCourse({
+    id: s.id || 'course',
+    name: s.name || '',
+    path: s.path || [{ lat: LAT, lon: LON }, { lat: north(500), lon: LON }],
+    spots: s.spots || [{ id: 's1', lat: north(100), lon: LON, rad: WAYPOINT_RAD }]
+  });
+}
+
+test('마지막 칸은 달릴 때마다 덮어쓴다', function () {
+  const shelf = Shelf.createShelf({});
+  Shelf.keepLast(shelf, courseWith({ spots: [] }), T0);
+  Shelf.keepLast(shelf, courseWith({}), T0 + 1000);
+  assert(shelf.last.spots.length === 1, '덮어쓰지 않았습니다');
+  assert(shelf.saved.length === 0, '마지막 칸이 저장 칸을 먹었습니다');
+});
+
+test('저장 칸이 차면 거절한다', function () {
+  // 가장 오래된 것을 내보내지 않는다. 사용자가 이름 붙여 넣은 것이라 조용히 사라지면 안 된다
+  const shelf = Shelf.createShelf({});
+  assert(Shelf.save(shelf, courseWith({ id: 'course' }), '가', T0).ok === true, '첫 저장이 막혔습니다');
+  assert(Shelf.save(shelf, courseWith({ id: 'course' }), '나', T0).ok === true, '둘째 저장이 막혔습니다');
+  const third = Shelf.save(shelf, courseWith({ id: 'course' }), '다', T0);
+  assert(third.ok === false, '한도를 넘겨 받았습니다');
+  assert(third.reason === 'shelf-full', '사유가 다릅니다: ' + third.reason);
+  assert(shelf.saved.length === SAVED_MAX, '칸 수가 ' + shelf.saved.length + ' 입니다');
+  assert(shelf.saved[0].name === '가', '가장 오래된 것이 사라졌습니다');
+});
+
+test('지우면 다시 저장할 수 있다', function () {
+  const shelf = Shelf.createShelf({});
+  Shelf.save(shelf, courseWith({ id: 'course' }), '가', T0);
+  const second = Shelf.save(shelf, courseWith({ id: 'course' }), '나', T0);
+  assert(Shelf.remove(shelf, second.course.id) === true, '지우지 못했습니다');
+  assert(Shelf.save(shelf, courseWith({ id: 'course' }), '다', T0).ok === true, '지웠는데 막혔습니다');
+});
+
+test('이미 보관함에 있는 코스는 그 자리를 갱신한다', function () {
+  // 새로 넣는 것으로 보면 불러와 지점 하나 더 찍는 것만으로 칸이 찬다
+  const shelf = Shelf.createShelf({});
+  const first = Shelf.save(shelf, courseWith({ id: 'course' }), '한강', T0);
+  const again = Shelf.save(shelf, courseWith({
+    id: first.course.id, spots: [
+      { id: 's1', lat: north(100), lon: LON, rad: WAYPOINT_RAD },
+      { id: 's2', lat: north(200), lon: LON, rad: WAYPOINT_RAD }
+    ]
+  }), '한강', T0 + 5000);
+  assert(again.ok === true, '갱신이 막혔습니다: ' + again.reason);
+  assert(shelf.saved.length === 1, '칸이 늘었습니다 (' + shelf.saved.length + ')');
+  assert(shelf.saved[0].spots.length === 2, '지점이 갱신되지 않았습니다');
+});
+
+test('넣은 뒤 코스를 고쳐도 보관함은 그대로다', function () {
+  // 참조를 그대로 두면 달리는 중 지점을 지우는 것이 저장해 둔 것을 지우는 일이 된다
+  const shelf = Shelf.createShelf({});
+  const course = courseWith({ id: 'course' });
+  Shelf.save(shelf, course, '가', T0);
+  Course.remove(course, 's1');
+  course.path.push({ lat: north(900), lon: LON });
+  assert(shelf.saved[0].spots.length === 1, '지점이 함께 사라졌습니다');
+  assert(shelf.saved[0].path.length === 2, '경로가 함께 늘었습니다');
+});
+
+test('시작점이 가까운 코스만 추천한다', function () {
+  const shelf = Shelf.createShelf({});
+  Shelf.save(shelf, courseWith({ id: 'course' }), '여기', T0);
+  Shelf.save(shelf, courseWith({
+    id: 'course',
+    path: [{ lat: north(5000), lon: LON }, { lat: north(5500), lon: LON }]
+  }), '먼 곳', T0);
+
+  const near1 = Shelf.nearStart(shelf, north(20), LON);
+  assert(near1.length === 1, '후보가 ' + near1.length + '개입니다');
+  assert(near1[0].course.name === '여기', '먼 코스를 권했습니다');
+
+  const none = Shelf.nearStart(shelf, north(2000), LON);
+  assert(none.length === 0, '아무것도 가깝지 않은데 권했습니다');
+});
+
+test('추천은 가까운 순이다', function () {
+  const shelf = Shelf.createShelf({});
+  Shelf.keepLast(shelf, courseWith({ path: [{ lat: north(40), lon: LON }, { lat: north(500), lon: LON }] }), T0);
+  Shelf.save(shelf, courseWith({ id: 'course', path: [{ lat: north(5), lon: LON }, { lat: north(500), lon: LON }] }), '가까운', T0);
+  const list = Shelf.nearStart(shelf, LAT, LON);
+  assert(list.length === 2, '후보가 ' + list.length + '개입니다');
+  assert(list[0].course.name === '가까운', '가까운 순이 아닙니다');
+});
+
+test('위치를 모르면 추천하지 않는다', function () {
+  const shelf = Shelf.createShelf({});
+  Shelf.save(shelf, courseWith({ id: 'course' }), '가', T0);
+  assert(Shelf.nearStart(shelf, null, null).length === 0, '위치 없이 권했습니다');
+});
+
+test('경로가 없는 코스는 추천 후보가 아니다', function () {
+  // 시작점이 없으면 가까운지 물을 수 없다
+  const shelf = Shelf.createShelf({});
+  Shelf.save(shelf, courseWith({ id: 'course', path: [] }), '경로 없음', T0);
+  assert(Shelf.nearStart(shelf, LAT, LON).length === 0, '시작점이 없는데 권했습니다');
 });
 
 /* ── 실행 ─────────────────────────────────────────────────────── */
