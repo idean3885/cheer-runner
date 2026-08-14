@@ -62,8 +62,8 @@ export const ExpoLocationAdapter = {
       deferredUpdatesDistance: 0,
       foregroundService: {
         notificationTitle: '치어러너',
-        notificationBody: '주행을 기록하는 중입니다',
-        notificationColor: '#c4452b'
+        notificationBody: '달리기를 기록하는 중입니다',
+        notificationColor: '#1270b0'
       }
     }));
   },
@@ -82,7 +82,7 @@ export const ExpoLocationAdapter = {
     return Location.watchPositionAsync(BASE, onFix);
   },
 
-  // 한 번만 받는다. 주행을 시작하기 전에 지도를 러너 자리에 맞추는 데 쓴다
+  // 한 번만 받는다. 달리기를 시작하기 전에 지도를 러너 자리에 맞추는 데 쓴다
   once() {
     return Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
   }

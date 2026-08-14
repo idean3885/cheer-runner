@@ -204,7 +204,7 @@ test('지점은 순서대로 하나씩 목표가 된다', function () {
 
 /* ── 상태 전이 ────────────────────────────────────────────────── */
 
-test('종료된 주행은 위치를 받지 않는다', function () {
+test('종료된 달리기는 위치를 받지 않는다', function () {
   const run = Run.createRun({});
   Run.start(run, T0);
   Run.accept(run, fix({ t: T0, speed: 3 }));
@@ -212,11 +212,11 @@ test('종료된 주행은 위치를 받지 않는다', function () {
   const before = run.track.dist;
   Run.finish(run, T0 + 2000);
   const r = Run.accept(run, fix({ t: T0 + 3000, lat: north(100), speed: 3 }));
-  assert(r.accepted === false, '종료된 주행이 위치를 받았습니다');
+  assert(r.accepted === false, '종료된 달리기가 위치를 받았습니다');
   assert(run.track.dist === before, '거리가 늘었습니다');
 });
 
-test('시작하지 않은 주행은 위치를 받지 않는다', function () {
+test('시작하지 않은 달리기는 위치를 받지 않는다', function () {
   const run = Run.createRun({});
   const r = Run.accept(run, fix({ t: T0 }));
   assert(r.accepted === false, '시작 전에 위치를 받았습니다');
@@ -240,7 +240,7 @@ test('움직임이 없으면 스스로 끝낼 상태가 된다', function () {
 
 test('제자리에서 위치가 계속 와도 무이동으로 본다', function () {
   // 거리 필터를 0 으로 두었으므로 제자리에서도 위치는 계속 들어온다.
-  // 수신을 움직임으로 세면 러너가 멈춰 서 있어도 주행이 끝나지 않는다
+  // 수신을 움직임으로 세면 러너가 멈춰 서 있어도 달리기가 끝나지 않는다
   const run = Run.createRun({});
   Run.start(run, T0);
   for (let i = 0; i <= 200; i++) {
@@ -260,7 +260,7 @@ test('움직이면 무이동 시계가 다시 시작한다', function () {
 
 /* ── 지정한다 ─────────────────────────────────────────────────── */
 
-test('달리며 여기를 표시하면 이번 주행에는 울리지 않는다', function () {
+test('달리며 여기를 표시하면 이번 달리기에는 울리지 않는다', function () {
   // 방금 지난 자리라 바로 도달 판정에 걸리면 출발 직후 응원이 나간다
   const course = Course.createCourse({ path: [{ lat: LAT, lon: LON }, { lat: north(500), lon: LON }] });
   const run = Run.createRun({ spots: [] });
@@ -270,7 +270,7 @@ test('달리며 여기를 표시하면 이번 주행에는 울리지 않는다',
   assert(spot.rad === WAYPOINT_RAD, '반경이 기본값이 아닙니다');
   assert(course.spots.length === 1, '지점이 코스에 남지 않았습니다');
   const r = Run.accept(run, fix({ t: T0 + 1000, lat: north(3), speed: 3 }));
-  assert(r.arrival === null, '이번 주행에서 울렸습니다');
+  assert(r.arrival === null, '이번 달리기에서 울렸습니다');
 });
 
 test('코스를 벗어난 자리는 지정을 거부한다', function () {
@@ -336,7 +336,7 @@ test('지점 이름은 겹치지 않는다', function () {
   assert(new Set([a.id, b.id, c.id]).size === 3, '이름이 겹쳤습니다: ' + [a.id, b.id, c.id].join(','));
 });
 
-test('끝난 주행의 경로 점을 지점으로 올린다', function () {
+test('끝난 달리기의 경로 점을 지점으로 올린다', function () {
   const run = Run.createRun({});
   Run.start(run, T0);
   for (let i = 0; i <= 60; i++) {

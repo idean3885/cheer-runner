@@ -9,6 +9,7 @@
 
 import { ExpoLocationAdapter, setSink } from '../infrastructure/location/ExpoLocationAdapter';
 import { ExpoSpeechAdapter } from '../infrastructure/speech/ExpoSpeechAdapter';
+import { ExpoCueAdapter } from '../infrastructure/sound/ExpoCueAdapter';
 import { FileTrace } from '../infrastructure/storage/FileTrace';
 import { SessionStore } from '../infrastructure/storage/SessionStore';
 import { CourseStore } from '../infrastructure/storage/CourseStore';
@@ -30,6 +31,7 @@ const diagnostic = createDiagnosticSession({
 const run = createRunSession({
   location: ExpoLocationAdapter,
   speech: ExpoSpeechAdapter,
+  cue: ExpoCueAdapter,
   session: SessionStore,
   store: CourseStore,
   trace: FileTrace,

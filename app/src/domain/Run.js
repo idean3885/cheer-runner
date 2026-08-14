@@ -1,13 +1,13 @@
-// 주행. 집합체의 뿌리다.
+// 달리기. 집합체의 뿌리다.
 //
-// 도메인 한 문장은 이렇다. 러너가 한 번의 주행에서 시작부터 종료까지의 거리를 측정하고,
+// 도메인 한 문장은 이렇다. 러너가 한 번의 달리기에서 시작부터 종료까지의 거리를 측정하고,
 // 그 사이에 응원받고 싶은 위치를 지정해 두었다면 그곳에서 응원받는 것.
 //
 // 그래서 이 파일에 세 동사가 있다. 측정한다 · 지정한다 · 응원받는다.
 // 지정은 코스가 갖고, 여기서는 지정된 지점에 닿았는지만 본다.
 //
 // 상태를 불린으로 두지 않는다. 불린은 전이를 표현하지 못해서
-// 종료된 주행에 위치가 들어오는 것을 막을 자리가 없다.
+// 종료된 달리기에 위치가 들어오는 것을 막을 자리가 없다.
 
 import { haversine, paceOf } from './geo.js';
 import { createTrack, extend, windowPace, averagePace } from './Track.js';
@@ -16,7 +16,7 @@ import { IDLE_MS, MOVE_MIN } from './constants.js';
 export const STATE = { ready: 'ready', running: 'running', finished: 'finished' };
 
 // 위치의 시각은 데이터에서 온다. 벽시계를 읽으면 두 가지가 깨진다.
-// 같은 순간에 여러 위치를 넣는 재생이 전부 버려지고, 실제 주행에서도 콜백이
+// 같은 순간에 여러 위치를 넣는 재생이 전부 버려지고, 실제 달리기에서도 콜백이
 // 늦게 도착한 만큼 시간이 잘못 붙어 페이스가 밀린다
 export function timeOf(fix) {
   const t = fix && fix.timestamp;
@@ -55,7 +55,7 @@ export function start(run, at) {
   return { started: true };
 }
 
-// 종료된 주행은 위치를 받지 않는다. 이 불변식이 이 함수의 첫 줄이다
+// 종료된 달리기는 위치를 받지 않는다. 이 불변식이 이 함수의 첫 줄이다
 export function accept(run, fix) {
   if (run.state !== STATE.running) {
     return { accepted: false, reason: 'not-running' };
