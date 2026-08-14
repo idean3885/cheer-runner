@@ -2,7 +2,7 @@
 
 - 상태: 채택
 - 날짜: 2026-08-12
-- 관련: `docs/ARCHITECTURE.md`, 선행 PoC (`geofence-poc`)
+- 관련: `docs/ARCHITECTURE.md`. 선행 PoC 코드는 [#20](https://github.com/idean3885/cheer-runner/issues/20) 에서 걷었다. 아래 측정 표가 그 기록이다
 
 ## 배경
 
