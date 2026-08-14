@@ -9,7 +9,7 @@
 // 색은 적지 않고 theme.js 에서 가져온다. 같은 색이 여러 자리에 적히면 한쪽만 바뀐다.
 
 import { useEffect, useState } from 'react';
-import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AppState, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline, Circle, PROVIDER_DEFAULT } from 'react-native-maps';
 import { runSession } from '../../application/wiring';
 import { BLOCK } from '../../application/RunSession';
@@ -23,6 +23,7 @@ const RECHECK_MS = 10000;
 // 못 하는 사유마다 무엇을 해야 하는지 적는다. 「시작할 수 없습니다」 하나로는
 // 사용자가 할 일을 알 수 없다
 const BANNER = {
+  [BLOCK.permission]: '위치 권한이 거부돼 있습니다. 설정에서 «항상 허용» 으로 바꿔 주세요',
   [BLOCK.service]: '위치 서비스가 꺼져 있습니다. 기기 설정에서 위치를 켜 주세요',
   [BLOCK.waiting]: '위치를 받는 중입니다',
   [BLOCK.fix]: '위치를 받지 못하고 있습니다. 지하나 실내면 하늘이 보이는 곳으로 나가 주세요',
@@ -134,6 +135,12 @@ export function RunScreen(props) {
           {banner.map(function (line, i) {
             return <Text key={i} style={s.bannerText}>{line}</Text>;
           })}
+          {/* 권한 거부는 앱 안에서 되돌릴 수 없다. 그래서 갈 곳을 준다 */}
+          {(v.blocks || []).indexOf(BLOCK.permission) >= 0 ? (
+            <Pressable style={s.bannerBtn} onPress={function () { Linking.openSettings(); }}>
+              <Text style={s.bannerBtnText}>설정 열기</Text>
+            </Pressable>
+          ) : null}
         </View>
       ) : null}
 
@@ -182,9 +189,11 @@ export function RunScreen(props) {
       {notice ? <Text style={s.notice}>{notice}</Text> : null}
 
       <View style={s.btns}>
+        {/* 눌리는지는 세션이 정한다. 화면이 상태를 보고 판단하면 그 식이 시험 밖에 남는다 */}
         <Big label={running ? '종료' : '달리기'} tone={running ? 'stop' : 'go'}
-          disabled={busy || (!running && !v.canStart)} onPress={running ? onFinish : onStart} />
-        <Big label="여기 표시" tone="mark" disabled={!running || busy} onPress={onMarkHere} />
+          disabled={busy || !v.canToggle}
+          onPress={running ? onFinish : onStart} />
+        <Big label="여기 표시" tone="mark" disabled={busy || !v.canMark} onPress={onMarkHere} />
       </View>
 
       <View style={s.mapBox}>
@@ -295,6 +304,9 @@ const s = StyleSheet.create({
   banner: { marginTop: 6, marginHorizontal: -4, paddingVertical: 9, paddingHorizontal: 12,
     borderRadius: 10, backgroundColor: COLOR.bannerBg, borderWidth: 1, borderColor: COLOR.bannerLine },
   bannerText: { fontSize: 12.5, lineHeight: 18, color: COLOR.bannerInk, fontWeight: '600' },
+  bannerBtn: { alignSelf: 'flex-start', marginTop: 8, paddingVertical: 6, paddingHorizontal: 12,
+    borderRadius: 8, backgroundColor: COLOR.bannerInk },
+  bannerBtnText: { fontSize: 12.5, fontWeight: '700', color: COLOR.onDark },
   suggest: { marginTop: 8, padding: 12, borderRadius: 12, backgroundColor: COLOR.card,
     borderWidth: 1, borderColor: COLOR.run },
   suggestK: { fontSize: 13, fontWeight: '700', color: COLOR.run },

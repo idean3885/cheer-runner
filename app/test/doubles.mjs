@@ -39,12 +39,21 @@ export function fakeLocation(opts) {
     stopCalls: 0,
     // 기기 위치 서비스. 권한과 다른 값이다. 권한을 줬는데 설정에서 끈 상태가 있다
     services: o.services !== false,
+    // 위치를 몇 번 물었나. 권한이 없을 때 묻지 않는 것을 시험이 봐야 한다
+    onceCalls: 0,
+    // 권한을 몇 번 물었나. 두 번 이상 묻지 않는 것을 시험이 봐야 한다
+    requestCalls: 0,
     permissions: o.permissions || { foreground: 'granted', background: 'granted' }
   };
   return {
     state,
     servicesEnabled: async function () { return state.services; },
-    requestPermissions: async function () { return state.permissions; },
+    onceCalls: function () { return state.onceCalls; },
+    requestPermissions: async function () {
+      state.requestCalls++;
+      if (o.grantOnAsk) state.permissions = { foreground: 'granted', background: 'granted' };
+      return state.permissions;
+    },
     getPermissions: async function () { return state.permissions; },
     startBackground: async function () {
       state.startCalls++;
@@ -55,6 +64,7 @@ export function fakeLocation(opts) {
     isBackgroundRunning: async function () { return state.running; },
     watchForeground: async function () { return { remove: function () {} }; },
     once: async function () {
+      state.onceCalls++;
       // 운영 어댑터는 기다려도 안 오면 없음을 돌려준다. 지하가 그 상태다.
       // 던지는 쪽도 함께 둔다. 두 실패가 같은 결과로 보여야 한다
       if (o.noFix) return null;

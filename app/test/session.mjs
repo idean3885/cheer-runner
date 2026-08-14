@@ -315,6 +315,261 @@ test('위치를 못 받는 동안에는 지난 자리를 받은 것으로 보지
   assert(s.view().here != null, '지도 자리까지 지웠습니다. 마지막으로 안 자리는 남아야 합니다');
 });
 
+/* ── 버튼이 눌리는가 (생애주기 전체) ─────────────────────────────
+
+   결함 둘이 같은 자리에서 났다. 가드를 넣을 때 새로 막으려던 상태만 시험했고,
+   이미 되던 상태(첫 실행·종료 직후)는 지나가지 않았다. 그래서 상태마다 두 버튼이
+   눌리는지를 표로 고정한다. 되던 것이 깨지면 여기서 걸린다.                        */
+
+// 상태를 만들고 그 상태의 버튼 상태를 돌려준다
+const LIFECYCLE = [
+  {
+    name: '첫 실행. 권한을 아직 묻지 않았고 허용하면 위치가 온다',
+    opts: { location: { permissions: { foreground: 'undetermined', background: 'undetermined' }, grantOnAsk: true } },
+    async reach(s) { await s.checkReadiness(); },
+    want: { canStart: true, canMark: false, canFinish: false, canToggle: true, blocks: [] }
+  },
+  {
+    name: '준비. 권한이 있고 위치도 받았다',
+    opts: {},
+    async reach(s) { await s.checkReadiness(); },
+    want: { canStart: true, canMark: false, canFinish: false, canToggle: true, blocks: [] }
+  },
+  {
+    name: '달리는 중. 위치를 한 건 받았다',
+    opts: {},
+    async reach(s, clock) {
+      await s.start();
+      s.onFixes({ error: null, fixes: [fix({ t: T0 })] });
+    },
+    want: { canStart: false, canMark: true, canFinish: true, canToggle: true, blocks: [] }
+  },
+  {
+    name: '달리는 중인데 위치를 아직 못 받았다',
+    opts: {},
+    async reach(s) { await s.start(); },
+    want: { canStart: false, canMark: false, canFinish: true, canToggle: true, blocks: [] }
+  },
+  {
+    name: '달리는 중에 인터넷이 끊겼다',
+    opts: {},
+    async reach(s, clock, extra) {
+      await s.start();
+      s.onFixes({ error: null, fixes: [fix({ t: T0 })] });
+      extra.network.change(false);
+    },
+    want: { canStart: false, canMark: true, canFinish: true, canToggle: true, blocks: [] }
+  },
+  {
+    name: '종료 직후',
+    opts: {},
+    async reach(s, clock) {
+      await s.start();
+      s.onFixes({ error: null, fixes: [fix({ t: T0 })] });
+      clock.advance(1000);
+      await s.finish('user');
+    },
+    want: { canStart: true, canMark: false, canFinish: false, canToggle: true, blocks: [] }
+  },
+  {
+    name: '권한이 거부됐다',
+    opts: { location: { permissions: { foreground: 'denied', background: 'denied' }, noFix: true } },
+    async reach(s) { await s.checkReadiness(); },
+    want: { canStart: false, canMark: false, canFinish: false, canToggle: false, blocks: ['location-permission'] }
+  },
+  {
+    name: '위치 서비스가 꺼졌다',
+    opts: { location: { services: false, noFix: true } },
+    async reach(s) { await s.checkReadiness(); },
+    want: { canStart: false, canMark: false, canFinish: false, canToggle: false, blocks: ['location-service'] }
+  },
+  {
+    name: '지하. 권한은 있고 위치가 오지 않는다',
+    opts: { location: { noFix: true } },
+    async reach(s) { await s.checkReadiness(); },
+    want: { canStart: false, canMark: false, canFinish: false, canToggle: false, blocks: ['no-fix'] }
+  },
+  {
+    name: '인터넷이 끊긴 채로 시작 전',
+    opts: { network: { online: false } },
+    async reach(s) { await s.checkReadiness(); },
+    want: { canStart: false, canMark: false, canFinish: false, canToggle: false, blocks: ['offline'] }
+  }
+];
+
+LIFECYCLE.forEach(function (c) {
+  test('버튼 상태 — ' + c.name, async function () {
+    const built = build(c.opts);
+    await c.reach(built.s, built.clock, built);
+    const v = built.s.view();
+    ['canStart', 'canMark', 'canFinish', 'canToggle'].forEach(function (k) {
+      assert(v[k] === c.want[k], k + ' 가 ' + v[k] + ' 입니다 (기대 ' + c.want[k] + ')');
+    });
+    assert(v.blocks.join(',') === c.want.blocks.join(','),
+      '사유가 [' + v.blocks.join(',') + '] 입니다 (기대 [' + c.want.blocks.join(',') + '])');
+  });
+});
+
+/* ── 종료 뒤 다시 시작 ────────────────────────────────────────── */
+
+test('종료한 뒤에는 다시 시작할 수 있다', async function () {
+  // 끝난 달리기는 화면에 남지만 달리는 중은 아니다. 이 구분이 없어서 종료하면
+  // 달리기 버튼이 잠긴 채로 남았고, 앱을 다시 켜야 풀렸다
+  const { s, clock } = build();
+  await s.start();
+  s.onFixes({ error: null, fixes: [fix({ t: T0 })] });
+  clock.advance(1000);
+  await s.finish('user');
+
+  const v = s.view();
+  assert(v.state === 'finished', '상태가 ' + v.state + ' 입니다');
+  assert(v.canStart === true, '종료 뒤에 시작이 잠겼습니다: ' + JSON.stringify(v.blocks));
+  assert(v.blocks.length === 0, '사유가 남았습니다: ' + JSON.stringify(v.blocks));
+
+  clock.advance(1000);
+  const again = await s.start();
+  assert(again.started === true, '다시 시작하지 못했습니다: ' + again.reason);
+  assert(s.view().state === 'running', '상태가 ' + s.view().state + ' 입니다');
+});
+
+test('달리는 중에는 시작 조건을 화면에 알리지 않는다', async function () {
+  // 배너를 띄워도 할 일이 없고, 달리면서 읽지도 않는다
+  const { s } = build();
+  await s.start();
+  const v = s.view();
+  assert(v.canStart === false, '달리는 중에 시작할 수 있다고 봅니다');
+  assert(v.blocks.length === 0, '달리는 중에 배너를 띄웁니다: ' + JSON.stringify(v.blocks));
+});
+
+test('종료 뒤에는 코스 추천이 다시 보인다', async function () {
+  // 달리는 중에만 감춘다. 끝난 뒤에는 다음 달리기를 위해 고를 수 있어야 한다
+  const { s, clock } = build({ course: { spots: [], path: [] } });
+  await runOnce(s, clock, [20]);
+  s.saveCourse('가까운 코스');
+  await s.checkReadiness();
+  assert(s.view().suggested.length >= 1, '종료 뒤에 추천이 사라졌습니다');
+});
+
+/* ── 권한과 시작 조건 ─────────────────────────────────────────── */
+
+// 첫 설치 상태. 권한을 아직 묻지 않았고 그래서 위치도 못 받는다
+const FIRST_RUN = {
+  location: { permissions: { foreground: 'undetermined', background: 'undetermined' }, noFix: true }
+};
+
+test('권한을 아직 묻지 않았으면 달리기를 막지 않는다', async function () {
+  // 막으면 권한을 물어볼 경로가 사라진다. 권한 요청은 시작 안에만 있고
+  // 시작은 버튼으로만 불리므로, 버튼을 잠그면 새 기기가 그 고리에 갇힌다
+  const { s } = build(FIRST_RUN);
+  await s.checkReadiness();
+  const v = s.view();
+  assert(v.canStart === true, '아직 묻지 않았는데 막았습니다: ' + JSON.stringify(v.blocks));
+  assert(v.blocks.length === 0, '사유가 남았습니다: ' + JSON.stringify(v.blocks));
+});
+
+test('첫 실행에 권한을 스스로 묻는다', async function () {
+  // 버튼을 누를 때까지 기다리면 사용자는 왜 안 되는지 모른다
+  const { s, location } = build(FIRST_RUN);
+  await s.checkReadiness();
+  assert(location.state.requestCalls === 1, '묻지 않았습니다 (' + location.state.requestCalls + '번)');
+});
+
+test('권한은 두 번 이상 묻지 않는다', async function () {
+  // iOS 는 한 번만 대화상자를 띄운다. 거부된 뒤 다시 부르면 조용히 거부가 돌아온다
+  const { s, location } = build(FIRST_RUN);
+  await s.checkReadiness();
+  await s.checkReadiness();
+  await s.checkReadiness();
+  assert(location.state.requestCalls === 1, '' + location.state.requestCalls + '번 물었습니다');
+});
+
+test('첫 실행에 허용하면 그 자리에서 조건이 선다', async function () {
+  const { s, location } = build({
+    location: { permissions: { foreground: 'undetermined', background: 'undetermined' }, grantOnAsk: true }
+  });
+  await s.checkReadiness();
+  assert(s.view().canStart === true, '허용했는데 막혔습니다: ' + JSON.stringify(s.view().blocks));
+  assert(location.state.onceCalls === 1, '허용 뒤에 위치를 묻지 않았습니다');
+});
+
+test('막힌 사유를 기기 기록에 남긴다', async function () {
+  // 실측에서는 화면을 볼 수 없다. 왜 시작하지 못했는지는 기록으로만 안다
+  const clock = fakeClock(T0);
+  const trace = fakeTrace(); trace.bindClock(clock);
+  const s = createRunSession({
+    location: fakeLocation({ permissions: { foreground: 'denied', background: 'denied' }, noFix: true }),
+    speech: fakeSpeech(), cue: fakeCue(), network: fakeNetwork(),
+    session: fakeSession(), store: fakeStore({ spots: [], path: [] }), trace: trace, now: clock.now
+  });
+  await s.checkReadiness();
+  const lines = trace.read().filter(function (m) { return /시작 조건/.test(m.msg); });
+  assert(lines.length === 1, '사유를 남기지 않았습니다');
+  assert(/location-permission/.test(lines[0].msg), '사유가 다릅니다: ' + lines[0].msg);
+
+  // 같은 사유를 반복해서 남기지 않는다
+  await s.checkReadiness();
+  await s.checkReadiness();
+  const again = trace.read().filter(function (m) { return /시작 조건/.test(m.msg); });
+  assert(again.length === 1, '같은 사유를 ' + again.length + '번 남겼습니다');
+});
+
+test('권한을 아직 묻지 않았으면 위치를 묻지 않는다', async function () {
+  // 권한 없이 위치를 물으면 호출이 바로 거부된다. 8초를 기다릴 이유가 없다
+  const { s, location } = build(FIRST_RUN);
+  await s.checkReadiness();
+  assert(location.state.onceCalls === 0, '권한 없이 위치를 ' + location.state.onceCalls + '번 물었습니다');
+});
+
+test('첫 설치에서 달리기를 누르면 권한을 묻고 시작한다', async function () {
+  // 누르는 순간 시스템이 묻는다. 대역은 허용을 돌려주도록 둔다
+  const clock = fakeClock(T0);
+  const location = fakeLocation({ permissions: { foreground: 'undetermined', background: 'undetermined' } });
+  const s = createRunSession({
+    location, speech: fakeSpeech(), cue: fakeCue(), network: fakeNetwork(),
+    session: fakeSession(), store: fakeStore({ spots: [], path: [] }), now: clock.now
+  });
+  // 물어보면 허용으로 바뀐다
+  location.requestPermissions = async function () {
+    location.state.permissions = { foreground: 'granted', background: 'granted' };
+    return location.state.permissions;
+  };
+  await s.checkReadiness();
+  assert(s.view().canStart === true, '첫 설치에서 막혔습니다');
+  const r = await s.start();
+  assert(r.started === true, '권한을 묻고도 시작하지 못했습니다: ' + r.reason);
+});
+
+test('권한이 거부되면 막고 설정으로 보낼 사유를 낸다', async function () {
+  // 거부는 앱 안에서 되돌릴 수 없다. 지하와 같은 사유로 다루면 엉뚱한 안내가 나간다
+  const { s } = build({
+    location: { permissions: { foreground: 'denied', background: 'denied' }, noFix: true }
+  });
+  await s.checkReadiness();
+  const v = s.view();
+  assert(v.canStart === false, '거부됐는데 시작할 수 있다고 봅니다');
+  assert(v.blocks.indexOf('location-permission') >= 0,
+    '권한 사유가 없습니다: ' + JSON.stringify(v.blocks));
+  assert(v.blocks.indexOf('no-fix') < 0, '지하 사유를 함께 냈습니다: ' + JSON.stringify(v.blocks));
+});
+
+test('권한이 거부되면 위치를 묻지 않는다', async function () {
+  const { s, location } = build({
+    location: { permissions: { foreground: 'denied', background: 'denied' }, noFix: true }
+  });
+  await s.checkReadiness();
+  assert(location.state.onceCalls === 0, '거부 상태에서 위치를 물었습니다');
+});
+
+test('배경 권한을 거부하면 그 사실이 조건에 남는다', async function () {
+  // 물어본 결과를 반영하지 않으면 버튼이 살아 있어 같은 실패를 반복한다
+  const { s } = build({
+    location: { permissions: { foreground: 'granted', background: 'denied' } }
+  });
+  const r = await s.start();
+  assert(r.started === false, '배경 권한 없이 시작했습니다');
+  assert(r.reason === 'background-permission', '사유가 다릅니다: ' + r.reason);
+});
+
 /* ── 조작 확인 소리 ───────────────────────────────────────────── */
 
 test('시작·종료·여기 표시는 말이 아니라 소리로 알린다', async function () {
