@@ -24,6 +24,9 @@ export function createDiagnosticSession(deps) {
   const trace = deps.trace;
   const session = deps.session;
   const speak = deps.speak || function () {};
+  // 중지는 재생 중인 음성까지 끊어야 한다. 화면이 음성 어댑터를 직접 부르면
+  // 중지 절차가 두 자리에 나뉘고, 한쪽만 불리는 경로가 생긴다
+  const stopSpeaking = deps.stopSpeaking || function () {};
   const now = deps.now || function () { return Date.now(); };
 
   let hiddenSince = null;
@@ -108,6 +111,7 @@ export function createDiagnosticSession(deps) {
   async function stop() {
     session.clear();
     await location.stopBackground();
+    stopSpeaking();
     trace.append('mark', '=== 중지 ===');
   }
 
@@ -151,10 +155,28 @@ export function createDiagnosticSession(deps) {
     };
   }
 
+  // 화면이 물어보는 것들. 화면이 어댑터를 직접 부르면 계층 규칙이 무너지고,
+  // 그러면 화면 없이 시험할 수 없는 판단이 화면으로 돌아간다.
+  // 여기 있는 것은 판단이 아니라 통로다. 판단은 위쪽 함수들이 갖는다
+  function permissions() { return location.getPermissions(); }
+
+  function backgroundRunning() { return location.isBackgroundRunning(); }
+
+  function watchForeground(onFix) {
+    // 전경 구독은 배경이 0건일 때 위치 자체의 문제인지 가르는 데 쓴다
+    return location.watchForeground(onFix);
+  }
+
+  function note(kind, msg) { trace.append(kind, msg); }
+
   return {
     onBackgroundFixes: onBackgroundFixes,
     start: start,
     stop: stop,
+    permissions: permissions,
+    backgroundRunning: backgroundRunning,
+    watchForeground: watchForeground,
+    note: note,
     enterBackground: enterBackground,
     returnToForeground: returnToForeground,
     reapStaleSubscription: reapStaleSubscription,

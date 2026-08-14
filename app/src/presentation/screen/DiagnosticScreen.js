@@ -11,9 +11,6 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { AppState, Button, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { ExpoLocationAdapter } from '../../infrastructure/location/ExpoLocationAdapter';
-import { ExpoSpeechAdapter } from '../../infrastructure/speech/ExpoSpeechAdapter';
-import { FileTrace } from '../../infrastructure/storage/FileTrace';
 import { diagnosticSession as session } from '../../application/wiring';
 
 export function DiagnosticScreen() {
@@ -31,8 +28,8 @@ export function DiagnosticScreen() {
 
   function refresh() {
     setSnap(session.view());
-    ExpoLocationAdapter.getPermissions().then(setPerm);
-    ExpoLocationAdapter.isBackgroundRunning().then(function (on) {
+    session.permissions().then(setPerm);
+    session.backgroundRunning().then(function (on) {
       setRegistered(on);
       setRunning(on);
     });
@@ -45,10 +42,10 @@ export function DiagnosticScreen() {
     if (r.started) {
       // 전경 구독을 따로 건다. 배경이 0건일 때 위치 자체의 문제인지 가른다
       try {
-        fgWatch.current = await ExpoLocationAdapter.watchForeground(function () {
+        fgWatch.current = await session.watchForeground(function () {
           setFgCount(function (n) { return n + 1; });
         });
-      } catch (e) { FileTrace.append('err', '전경 구독 실패: ' + e.message); }
+      } catch (e) { session.note('err', '전경 구독 실패: ' + e.message); }
     }
     refresh();
     return r;
@@ -57,7 +54,6 @@ export function DiagnosticScreen() {
   async function stop() {
     await session.stop();
     if (fgWatch.current) { fgWatch.current.remove(); fgWatch.current = null; }
-    ExpoSpeechAdapter.stop();
     refresh();
   }
 

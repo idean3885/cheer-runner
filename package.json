@@ -1,10 +1,13 @@
 {
   "name": "cheer-runner-docs",
   "private": true,
-  "description": "설계 문서용 도구. 제품 코드는 여기 없다.",
+  "description": "관문과 문서 도구. 앱 코드는 app/ 에 있다.",
   "type": "module",
   "scripts": {
-    "diagrams": "node tools/render-diagrams.mjs"
+    "diagrams": "node tools/render-diagrams.mjs",
+    "cue": "node tools/make-cue.mjs",
+    "gates": "node tools/check-layers.mjs && node tools/check-imports.mjs && node tools/check-function-size.mjs && npm test --prefix app",
+    "gates:size": "node tools/check-function-size.mjs --report"
   },
   "devDependencies": {
     "playwright-core": "^1.62.1"

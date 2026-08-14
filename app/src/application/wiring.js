@@ -26,7 +26,8 @@ const diagnostic = createDiagnosticSession({
   location: ExpoLocationAdapter,
   trace: FileTrace,
   session: SessionStore,
-  speak: ExpoSpeechAdapter.speak
+  speak: ExpoSpeechAdapter.speak,
+  stopSpeaking: ExpoSpeechAdapter.stop
 });
 
 const run = createRunSession({
