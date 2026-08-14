@@ -1,10 +1,11 @@
-// 주행 세션과 배경 분배 시험. 기기 없이 돈다.
+// 달리기 세션과 배경 분배 시험. 기기 없이 돈다.
 //
 // 잡는 것
-//   - 배경 구독을 남의 세션이 받아 끊어버리지 않는가 (주행 중 측정이 멈추는 결함)
+//   - 배경 구독을 남의 세션이 받아 끊어버리지 않는가 (달리기 중 측정이 멈추는 결함)
 //   - 주인 없는 구독이 남지 않는가 (앱이 계속 깨어나던 결함)
-//   - 지정한 지점에서 응원이 나가는가, 이번 주행에는 울리지 않는가
-//   - 종료 뒤 이번 경로가 다음 주행의 이탈 판정 기준이 되는가
+//   - 지정한 지점에서 응원이 나가는가, 이번 달리기에는 울리지 않는가
+//   - 종료 뒤 이번 경로가 다음 달리기의 이탈 판정 기준이 되는가
+//   - 조작 확인이 말이 아니라 소리로 가는가 (말투가 어색해 짧은 소리로 바꿨다)
 //
 // 실행: node test/session.mjs
 
@@ -12,7 +13,7 @@ import { createRunSession, OWNER as RUN } from '../src/application/RunSession.js
 import { createDiagnosticSession, OWNER as DIAGNOSTIC } from '../src/application/DiagnosticSession.js';
 import { createBackgroundRouter } from '../src/application/BackgroundRouter.js';
 import { WAYPOINT_RAD } from '../src/domain/constants.js';
-import { fakeClock, fakeTrace, fakeSession, fakeLocation, fakeSpeech } from './doubles.mjs';
+import { fakeClock, fakeTrace, fakeSession, fakeLocation, fakeSpeech, fakeCue } from './doubles.mjs';
 
 const cases = [];
 function test(name, fn) { cases.push({ name, fn }); }
@@ -54,19 +55,20 @@ function build(opts) {
   const session = fakeSession();
   const location = fakeLocation(o.location);
   const speech = fakeSpeech(o.speech);
+  const cue = fakeCue();
   const store = fakeStore(o.course);
   let changes = 0;
   const s = createRunSession({
-    location, speech, session, store,
+    location, speech, cue, session, store,
     now: clock.now,
     onChange: function () { changes++; }
   });
-  return { s, clock, session, location, speech, store, changed: function () { return changes; } };
+  return { s, clock, session, location, speech, cue, store, changed: function () { return changes; } };
 }
 
 /* ── 시작과 종료 ──────────────────────────────────────────────── */
 
-test('배경 권한이 없으면 주행을 시작하지 않는다', async function () {
+test('배경 권한이 없으면 달리기를 시작하지 않는다', async function () {
   const { s, location, session } = build({
     location: { permissions: { foreground: 'granted', background: 'denied' } }
   });
@@ -82,12 +84,12 @@ test('시작하면 세션에 주인이 적힌다', async function () {
   assert(session.read().owner === RUN, '주인이 ' + session.read().owner + ' 입니다');
 });
 
-test('구독 실패하면 주행을 남기지 않는다', async function () {
+test('구독 실패하면 달리기를 남기지 않는다', async function () {
   const { s, session } = build({ location: { failStart: true } });
   const r = await s.start();
   assert(r.started === false, '실패했는데 시작으로 봤습니다');
   assert(session.read() === null, '세션이 남았습니다');
-  assert(s.view().state === 'ready', '주행이 남았습니다');
+  assert(s.view().state === 'ready', '달리기가 남았습니다');
 });
 
 test('종료하면 구독과 세션이 모두 사라진다', async function () {
@@ -113,7 +115,7 @@ test('종료 요약에 거리와 도달이 담긴다', async function () {
   const done = await s.finish('user');
   assert(done.summary.dist > 100, '거리가 ' + Math.round(done.summary.dist) + 'm 입니다');
   assert(done.summary.arrivals.length === 1, '도달이 기록되지 않았습니다');
-  assert(store.runs.length === 1, '주행 기록이 저장되지 않았습니다');
+  assert(store.runs.length === 1, '달리기 기록이 저장되지 않았습니다');
 });
 
 test('종료하면 시간이 멈춘다', async function () {
@@ -187,7 +189,7 @@ test('응원 문구에 구간 페이스가 들어간다', async function () {
   assert(/구간 \d+분 \d+초/.test(line), '페이스 표기가 없습니다: ' + line);
 });
 
-test('여기 표시는 이번 주행에 울리지 않는다', async function () {
+test('여기 표시는 이번 달리기에 울리지 않는다', async function () {
   const { s, speech, clock, store } = build({ course: { spots: [], path: [] } });
   await s.start();
   s.onFixes({ error: null, fixes: [fix({ t: T0 })] });
@@ -203,7 +205,7 @@ test('여기 표시는 이번 주행에 울리지 않는다', async function () 
   s.onFixes({ error: null, fixes: [fix({ t: T0 + 2000, lat: north(6) })] });
   const added = speech.said.slice(before);
   assert(!added.some(function (t) { return /지점입니다/.test(t); }),
-    '이번 주행에서 울렸습니다: ' + JSON.stringify(added));
+    '이번 달리기에서 울렸습니다: ' + JSON.stringify(added));
 });
 
 test('위치를 받기 전에는 여기 표시가 되지 않는다', async function () {
@@ -212,6 +214,63 @@ test('위치를 받기 전에는 여기 표시가 되지 않는다', async funct
   const r = s.markHere();
   assert(r.marked === false, '위치 없이 표시됐습니다');
   assert(r.reason === 'no-position', '사유가 다릅니다: ' + r.reason);
+});
+
+/* ── 조작 확인 소리 ───────────────────────────────────────────── */
+
+test('시작·종료·여기 표시는 말이 아니라 소리로 알린다', async function () {
+  // 말투가 어색해서 짧은 소리로 바꿨다. 도달 응원만 말로 남긴다
+  const { s, cue, speech, clock } = build({ course: { spots: [], path: [] } });
+  await s.start();
+  assert(cue.state.plays === 1, '시작에 소리가 나지 않았습니다 (' + cue.state.plays + ')');
+
+  s.onFixes({ error: null, fixes: [fix({ t: T0 })] });
+  clock.advance(1000);
+  s.onFixes({ error: null, fixes: [fix({ t: T0 + 1000, lat: north(3) })] });
+  s.markHere();
+  assert(cue.state.plays === 2, '여기 표시에 소리가 나지 않았습니다 (' + cue.state.plays + ')');
+
+  clock.advance(1000);
+  await s.finish('user');
+  assert(cue.state.plays === 3, '종료에 소리가 나지 않았습니다 (' + cue.state.plays + ')');
+  assert(speech.said.length === 0, '조작 확인을 말로 했습니다: ' + JSON.stringify(speech.said));
+});
+
+test('스스로 끝난 것은 말로 알린다', async function () {
+  // 누르지 않았는데 끝났다. 소리만 나면 무엇이 끝났는지 모른 채로 계속 달린다
+  const { s, speech, clock } = build();
+  await s.start();
+  s.onFixes({ error: null, fixes: [fix({ t: T0 })] });
+  clock.advance(181000);
+  await s.onFixes({ error: null, fixes: [fix({ t: T0 + 181000 })] });
+  assert(speech.said.some(function (t) { return /움직임이 없어/.test(t); }),
+    '사유를 말하지 않았습니다: ' + JSON.stringify(speech.said));
+});
+
+test('소리를 낼 수 없어도 달리기는 시작된다', async function () {
+  // 소리는 조작의 결과를 알리는 것이고 조작 자체가 아니다
+  const clock = fakeClock(T0);
+  const s = createRunSession({
+    location: fakeLocation(), speech: fakeSpeech(), session: fakeSession(),
+    store: fakeStore({ spots: [], path: [] }), now: clock.now
+  });
+  const r = await s.start();
+  assert(r.started === true, '알림음 어댑터 없이 시작하지 못했습니다: ' + r.reason);
+});
+
+test('지점 도달은 그대로 말로 응원한다', async function () {
+  const { s, speech, cue, clock } = build({
+    course: { spots: [{ id: 's1', lat: north(100), lon: LON, rad: WAYPOINT_RAD }], path: [] }
+  });
+  await s.start();
+  const beeps = cue.state.plays;
+  for (let i = 0; i <= 40; i++) {
+    clock.advance(i === 0 ? 0 : 1000);
+    s.onFixes({ error: null, fixes: [fix({ t: T0 + i * 1000, lat: north(3 * i) })] });
+  }
+  assert(speech.said.some(function (t) { return /1번 지점/.test(t); }),
+    '도달 응원이 말로 나가지 않았습니다: ' + JSON.stringify(speech.said));
+  assert(cue.state.plays === beeps, '도달에 소리를 냈습니다. 응원은 말이어야 합니다');
 });
 
 /* ── 지도에서 지정 ────────────────────────────────────────────── */
@@ -226,8 +285,8 @@ test('코스를 벗어난 자리는 지도에서도 거부한다', async functio
     '거부했는데 저장했습니다');
 });
 
-test('지도에서 찍은 지점은 이번 주행에도 목표가 된다', async function () {
-  // 여기 표시와 다르다. 아직 지나지 않은 자리일 수 있으므로 이번 주행에도 울린다
+test('지도에서 찍은 지점은 이번 달리기에도 목표가 된다', async function () {
+  // 여기 표시와 다르다. 아직 지나지 않은 자리일 수 있으므로 이번 달리기에도 울린다
   const { s, clock, speech } = build({
     course: { spots: [], path: [{ lat: LAT, lon: LON }, { lat: north(500), lon: LON }] }
   });
@@ -244,7 +303,7 @@ test('지도에서 찍은 지점은 이번 주행에도 목표가 된다', async
   }
   const added = speech.said.slice(before);
   assert(added.some(function (t) { return /1번 지점/.test(t); }),
-    '이번 주행에서 울리지 않았습니다: ' + JSON.stringify(added));
+    '이번 달리기에서 울리지 않았습니다: ' + JSON.stringify(added));
 });
 
 test('코스가 없으면 지도 지정을 사유와 함께 거절한다', async function () {
@@ -254,7 +313,7 @@ test('코스가 없으면 지도 지정을 사유와 함께 거절한다', async
   assert(r.reason === 'no-course', '사유가 다릅니다: ' + r.reason);
 });
 
-test('주행 전에 위치를 한 번 받아 지도 자리를 잡는다', async function () {
+test('달리기 전에 위치를 한 번 받아 지도 자리를 잡는다', async function () {
   const { s } = build();
   assert(s.view().here === null, '받기 전에 자리가 있습니다');
   await s.locate();
@@ -271,7 +330,7 @@ test('위치를 못 받아도 무너지지 않는다', async function () {
 
 /* ── 이탈 판정 기준 ───────────────────────────────────────────── */
 
-test('종료하면 이번 경로가 다음 주행의 기준이 된다', async function () {
+test('종료하면 이번 경로가 다음 달리기의 기준이 된다', async function () {
   const { s, clock, store } = build({ course: { spots: [], path: [] } });
   await s.start();
   for (let i = 0; i <= 30; i++) {
@@ -293,8 +352,8 @@ test('움직임이 없으면 스스로 종료한다', async function () {
   clock.advance(181000);
   await s.onFixes({ error: null, fixes: [fix({ t: T0 + 181000 })] });
   assert(location.state.running === false, '구독이 살아 있습니다');
-  // 끝난 주행은 화면에 남는다. 러너가 결과를 봐야 하므로 지우지 않는다
-  assert(s.view().state === 'finished', '주행이 종료되지 않았습니다 (' + s.view().state + ')');
+  // 끝난 달리기는 화면에 남는다. 러너가 결과를 봐야 하므로 지우지 않는다
+  assert(s.view().state === 'finished', '달리기가 종료되지 않았습니다 (' + s.view().state + ')');
 });
 
 /* ── 배경 분배 ────────────────────────────────────────────────── */
@@ -315,18 +374,18 @@ function routerSetup() {
   return { router, run, diagnostic, session, location, trace, clock };
 }
 
-test('주행이 걸어둔 구독을 진단이 받지 않는다', async function () {
-  // 진단은 만료되면 스스로 구독을 끊는다. 주행 구독을 진단이 받으면 달리는 중에 멈춘다
+test('달리기가 걸어둔 구독을 진단이 받지 않는다', async function () {
+  // 진단은 만료되면 스스로 구독을 끊는다. 달리기 구독을 진단이 받으면 달리는 중에 멈춘다
   const { router, run, session, location, clock } = routerSetup();
   await run.start();
-  assert(session.read().owner === RUN, '주인이 주행이 아닙니다');
+  assert(session.read().owner === RUN, '주인이 달리기가 아닙니다');
 
   clock.advance(60000);
   await router.route({ error: null, fixes: [fix({ t: T0 + 60000 })] });
 
-  assert(location.state.running === true, '주행 구독이 끊겼습니다');
+  assert(location.state.running === true, '달리기 구독이 끊겼습니다');
   assert(location.state.stopCalls === 0, '해제가 불렸습니다');
-  assert(run.view().state === 'running', '주행이 멈췄습니다');
+  assert(run.view().state === 'running', '달리기가 멈췄습니다');
 });
 
 test('진단이 걸어둔 구독은 진단이 받는다', async function () {

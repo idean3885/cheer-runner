@@ -8,7 +8,7 @@
 
 import { File, Paths } from 'expo-file-system';
 
-// 진단과 주행을 따로 띄운다. 확인해야 하는 경로가 둘이므로 표식도 둘이다
+// 진단과 달리기를 따로 띄운다. 확인해야 하는 경로가 둘이므로 표식도 둘이다
 export const MARK = { diagnostic: 'auto-start', run: 'auto-run' };
 
 export const AutoStartMarker = {

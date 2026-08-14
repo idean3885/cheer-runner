@@ -1,31 +1,30 @@
 // 조립 지점. 화면을 고르는 것 외에는 아무것도 하지 않는다.
 //
-// 진단 화면과 주행 화면을 나눈 이유는, 진단을 버릴 코드로 두지 않기 위해서다.
-// 위치 어댑터는 두 화면이 같은 것을 쓰므로 통과하면 그대로 남고,
-// 진단 화면은 실측에서 문제가 날 때마다 다시 필요하다.
+// 사람이 보는 화면은 달리기 하나다. 진단 화면은 남아 있지만 눌러서 열 길이 없다.
+// 기기 시험이 넣는 표식 파일로만 열리고, 실측 뒤에는 사람이 화면을 보는 대신
+// 기기가 남긴 기록 파일을 읽는 쪽이 본다.
+//
+// 진단을 지우지 않는 이유는 실측에서 문제가 날 때마다 다시 필요하기 때문이다.
+// 탭만 없앤 것이고 경로는 그대로다. 근거는 docs/adr/0006.
 
 import { useEffect, useRef, useState } from 'react';
-import { AppState, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { AppState, SafeAreaView, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { LinearGradient } from 'expo-linear-gradient';
 import { DiagnosticScreen } from './src/presentation/screen/DiagnosticScreen';
 import { RunScreen } from './src/presentation/screen/RunScreen';
+import { COLOR } from './src/presentation/theme';
 import { diagnosticSession, runSession } from './src/application/wiring';
 import { AutoStartMarker, MARK } from './src/infrastructure/storage/AutoStartMarker';
 import { FileTrace } from './src/infrastructure/storage/FileTrace';
 
-// 주행이 앞이다. 러너가 보는 화면이고, 진단은 문제가 났을 때만 본다
-const TABS = [
-  { key: 'run', label: '주행' },
-  { key: 'diag', label: '진단' }
-];
-
 export default function App() {
-  // 0 단계를 통과했으므로 주행을 먼저 띄운다. 진단은 실측에서 문제가 날 때 본다
-  const [tab, setTab] = useState('run');
+  // 진단은 표식이 있을 때만 열린다. 사람이 여는 길은 없다
+  const [screen, setScreen] = useState('run');
   const booted = useRef(false);
 
-  // 부팅 시 할 일은 여기서 한다. 화면에 두면 그 탭이 열리지 않는 동안 아무도 하지 않는다.
-  // 남은 구독을 정리하는 일은 어느 탭을 보든 해야 하고, 자동 시작 표식도 그렇다
+  // 부팅 시 할 일은 여기서 한다. 화면에 두면 그 화면이 열리지 않는 동안 아무도 하지 않는다.
+  // 남은 구독을 정리하는 일은 어느 화면을 보든 해야 하고, 자동 시작 표식도 그렇다
   useEffect(function () {
     if (booted.current) return;
     booted.current = true;
@@ -34,11 +33,11 @@ export default function App() {
       await runSession.reapStale();
       if (AutoStartMarker.consume(MARK.diagnostic)) {
         FileTrace.append('vis', '진단 자동 시작 표식을 확인했습니다');
-        setTab('diag');
+        setScreen('diag');
         await diagnosticSession.start();
       } else if (AutoStartMarker.consume(MARK.run)) {
-        FileTrace.append('vis', '주행 자동 시작 표식을 확인했습니다');
-        setTab('run');
+        FileTrace.append('vis', '달리기 자동 시작 표식을 확인했습니다');
+        setScreen('run');
         await runSession.start();
       }
     })();
@@ -55,32 +54,18 @@ export default function App() {
   }, []);
 
   return (
-    <SafeAreaView style={s.root}>
-      <StatusBar style="auto" />
-      <View style={s.body}>
-        {tab === 'diag' ? <DiagnosticScreen /> : <RunScreen />}
-      </View>
-      <View style={s.tabs}>
-        {TABS.map(function (t) {
-          const on = tab === t.key;
-          return (
-            <Pressable key={t.key} onPress={function () { setTab(t.key); }}
-              style={[s.tab, on ? s.tabOn : null]}>
-              <Text style={[s.tabText, on ? s.tabTextOn : null]}>{t.label}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    </SafeAreaView>
+    <LinearGradient colors={COLOR.canvas} locations={[0, 0.48, 1]} style={s.fill}>
+      <SafeAreaView style={s.fill}>
+        <StatusBar style="dark" />
+        <View style={s.body}>
+          {screen === 'diag' ? <DiagnosticScreen /> : <RunScreen />}
+        </View>
+      </SafeAreaView>
+    </LinearGradient>
   );
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#fff' },
-  body: { flex: 1 },
-  tabs: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: '#e3e8ef' },
-  tab: { flex: 1, paddingVertical: 12, alignItems: 'center' },
-  tabOn: { borderTopWidth: 2, borderTopColor: '#c4452b', marginTop: -1 },
-  tabText: { fontSize: 14, color: '#889' },
-  tabTextOn: { color: '#c4452b', fontWeight: '700' }
+  fill: { flex: 1 },
+  body: { flex: 1 }
 });

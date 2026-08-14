@@ -1,4 +1,4 @@
-// 주행 세션. 도메인과 플랫폼 사이를 잇는다.
+// 달리기 세션. 도메인과 플랫폼 사이를 잇는다.
 //
 // 도메인은 위치가 어디서 오는지 모르고, 화면은 거리를 어떻게 쌓는지 모른다.
 // 그 둘을 붙이는 일만 여기서 한다. 판단은 도메인에 있고 이 파일에는 없다.
@@ -12,13 +12,16 @@ import { windowPace, averagePace, segments } from '../domain/Track.js';
 import { PACE_MIN_DIST } from '../domain/constants.js';
 
 export const OWNER = 'run';
-export const MAX_MS = 4 * 60 * 60 * 1000;   // 주행 상한 4시간. 잊고 둔 구독을 끊는다
+export const MAX_MS = 4 * 60 * 60 * 1000;   // 달리기 상한 4시간. 잊고 둔 구독을 끊는다
 
 export function createRunSession(deps) {
   const location = deps.location;
   const speech = deps.speech;
+  // 조작 확인은 소리 한 번으로 한다. 문장으로 되돌려 주면 말투가 걸려 듣기 싫어지고,
+  // 정작 들어야 하는 지점 응원과 섞인다. 응원만 말로 남긴다
+  const cue = deps.cue;
   const session = deps.session;
-  const store = deps.store;              // 코스와 주행 기록 저장
+  const store = deps.store;              // 코스와 달리기 기록 저장
   // 기록은 실측용이다. 러너가 돌아온 뒤 무엇이 일어났는지 읽을 수 있어야 하고,
   // 그것이 없으면 배경에서 벌어진 일은 아무도 모른다
   const trace = deps.trace || { append: function () {} };
@@ -28,12 +31,17 @@ export function createRunSession(deps) {
   let run = null;
   let course = Course.createCourse(store ? store.readCourse() : {});
   let lastSpokeAt = 0;
-  // 주행을 시작하기 전에도 지도를 러너 자리에 맞춰야 한다. 그때 쓸 마지막으로 안 위치
+  // 달리기를 시작하기 전에도 지도를 러너 자리에 맞춰야 한다. 그때 쓸 마지막으로 안 위치
   let lastKnown = null;
 
   function say(text) {
     if (!speech) return;
     speech.speak(text, function () {});
+  }
+
+  // 조작이 먹었다는 것만 알린다. 무엇이 먹었는지는 화면이 적는다
+  function beep() {
+    if (cue) cue.play();
   }
 
   async function start() {
@@ -53,8 +61,8 @@ export function createRunSession(deps) {
       session.clear();
       return { started: false, reason: 'start-failed', error: e.message };
     }
-    trace.append('mark', '=== 주행 시작 ===');
-    say('주행을 시작합니다');
+    trace.append('mark', '=== 달리기 시작 ===');
+    beep();
     onChange();
     return { started: true, permissions: p };
   }
@@ -108,20 +116,20 @@ export function createRunSession(deps) {
   }
 
   // 지금 여기를 응원받고 싶은 자리로 표시한다.
-  // 이번 주행에는 울리지 않는다. 방금 지난 자리라 바로 도달로 걸린다
+  // 이번 달리기에는 울리지 않는다. 방금 지난 자리라 바로 도달로 걸린다
   function markHere() {
     const last = run && run.track ? run.track.prev : null;
     if (!last) return { marked: false, reason: 'no-position' };
     const spot = Course.markHere(course, last.lat, last.lon);
     if (store) store.writeCourse(course);
     trace.append('mark', '여기 표시. 지점 ' + course.spots.length + '곳');
-    say('여기를 표시했습니다. 다음 주행부터 응원합니다');
+    beep();
     onChange();
     return { marked: true, spot: spot };
   }
 
   // 지도에서 찍어 지정한다. 코스를 벗어나면 거부한다.
-  // 여기 표시와 달리 이번 주행에도 목표가 된다. 아직 지나지 않은 자리일 수 있다
+  // 여기 표시와 달리 이번 달리기에도 목표가 된다. 아직 지나지 않은 자리일 수 있다
   function pin(lat, lon) {
     const r = Course.pin(course, lat, lon);
     if (!r.ok) {
@@ -138,7 +146,7 @@ export function createRunSession(deps) {
     return r;
   }
 
-  // 위치를 한 번 받아 둔다. 주행 전에 지도를 띄우기 위한 것이고 거리에는 넣지 않는다
+  // 위치를 한 번 받아 둔다. 달리기 전에 지도를 띄우기 위한 것이고 거리에는 넣지 않는다
   async function locate() {
     try {
       const fix = await location.once();
@@ -165,7 +173,7 @@ export function createRunSession(deps) {
     if (speech) speech.stop();
 
     if (done.finished) {
-      // 이번 주행의 경로를 코스의 기준 경로로 남긴다. 다음 주행에서 이탈 판정에 쓴다
+      // 이번 달리기의 경로를 코스의 기준 경로로 남긴다. 다음 달리기에서 이탈 판정에 쓴다
       course.path = run.track ? run.track.points.map(function (p) {
         return { lat: p.lat, lon: p.lon };
       }) : course.path;
@@ -173,21 +181,24 @@ export function createRunSession(deps) {
         store.writeCourse(course);
         store.appendRun(done.summary);
       }
-      trace.append('mark', '=== 주행 종료 (' + reason + '). '
+      trace.append('mark', '=== 달리기 종료 (' + reason + '). '
         + (done.summary.dist / 1000).toFixed(2) + 'km, 위치 ' + done.summary.fixCount + '건 ===');
-      say(reason === 'idle' ? '움직임이 없어 주행을 마칩니다' : '주행을 마칩니다');
+      // 스스로 끝난 것은 말로 알린다. 누르지 않았는데 끝났으므로 소리만 나면
+      // 러너가 무엇이 끝났는지 모른 채로 계속 달린다
+      if (reason === 'idle') say('움직임이 없어 달리기를 마칩니다');
+      else beep();
     }
     onChange();
     return done;
   }
 
-  // 남은 구독 정리. 주행 기록이 없는데 구독만 살아 있으면 끊는다
+  // 남은 구독 정리. 달리기 기록이 없는데 구독만 살아 있으면 끊는다
   async function reapStale() {
     const on = await location.isBackgroundRunning();
     if (!on) return false;
     const rec = session.read();
     if (rec && rec.owner === OWNER && !run && now() <= rec.expiresAt) {
-      // 앱이 종료된 뒤 배경에서만 살아 있던 주행이다. 기록만 정리하고 구독은 끊는다.
+      // 앱이 종료된 뒤 배경에서만 살아 있던 달리기가다. 기록만 정리하고 구독은 끊는다.
       // 궤적이 메모리에만 있었으므로 이어 붙일 수 없다
       session.clear();
       await location.stopBackground();
@@ -204,7 +215,7 @@ export function createRunSession(deps) {
         here: lastKnown, segments: [], hasCourse: course.path.length > 0
       };
     }
-    // 끝난 주행은 끝난 시각으로 본다. 흐르는 시각을 넣으면 종료 뒤에도 시간이 늘고
+    // 끝난 달리기는 끝난 시각으로 본다. 흐르는 시각을 넣으면 종료 뒤에도 시간이 늘고
     // 거리는 그대로이므로 페이스가 함께 무너진다
     const at = run.state === Run.STATE.finished && run.finishedAt != null
       ? run.finishedAt : now();

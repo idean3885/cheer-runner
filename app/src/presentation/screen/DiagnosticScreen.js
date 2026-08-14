@@ -165,7 +165,7 @@ const s = StyleSheet.create({
   log: { flex: 1, backgroundColor: '#0b0f14', borderRadius: 10, padding: 9, marginBottom: 16 },
   line: { fontSize: 10.5, fontFamily: 'Menlo', marginBottom: 2 },
   t_ok: { color: '#1a7f37' },
-  t_bad: { color: '#c4452b' },
+  t_bad: { color: '#b3261e' },
   t_warn: { color: '#9a6700' },
   k_bg: { color: '#7ee08a' },
   k_err: { color: '#ff8a7a' },

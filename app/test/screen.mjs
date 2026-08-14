@@ -99,7 +99,7 @@ await sleep(8000);
 console.log('시작 전 화면');
 await shot(dev, '1-ready');
 
-// 2. 지점이 있는 주행. 코스를 심고 표식으로 스스로 시작시킨다
+// 2. 지점이 있는 달리기. 코스를 심고 표식으로 스스로 시작시킨다
 const path61 = [];
 for (let i = 0; i <= 60; i++) path61.push({ lat: north(STEP_M * i), lon: LON });
 fs.writeFileSync(path.join(docs, 'course.json'), JSON.stringify({
@@ -119,7 +119,7 @@ for (let i = 1; i <= STEPS; i++) {
   await run('xcrun', ['simctl', 'location', dev, 'set', north(STEP_M * i).toFixed(7) + ',' + LON]);
   await sleep(1000);
 }
-console.log('주행 중 화면');
+console.log('달리기 중 화면');
 await shot(dev, '2-running');
 
 if (!(await alive(dev))) fail('앱이 죽었습니다. 그림만으로는 알기 어려운 상태입니다');

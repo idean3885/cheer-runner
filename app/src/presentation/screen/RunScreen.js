@@ -1,16 +1,19 @@
-// 주행 화면. 러너가 보는 화면이다.
+// 달리기 화면. 러너가 보는 화면이다.
 //
 // 이 화면이 하는 일은 셋이다. 세션을 부르고, 되돌아온 값을 그리고, 버튼을 연결한다.
 // 거리를 쌓거나 도달을 판정하는 코드는 여기 없다. 그것은 도메인에 있다.
 //
 // 화면에 로직을 두면 두 가지가 무너진다. 기기 없이 시험할 수 없고, 같은 로직이
-// 진단 화면과 주행 화면에 각각 적힌다.
+// 진단 화면과 달리기 화면에 각각 적힌다.
+//
+// 색은 적지 않고 theme.js 에서 가져온다. 같은 색이 여러 자리에 적히면 한쪽만 바뀐다.
 
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline, Circle, PROVIDER_DEFAULT } from 'react-native-maps';
 import { runSession } from '../../application/wiring';
 import { WAYPOINT_RAD } from '../../domain/constants';
+import { COLOR } from '../theme';
 
 function fmtDur(ms) {
   const s = Math.floor(ms / 1000);
@@ -33,7 +36,7 @@ export function RunScreen() {
   function refresh() { setV(runSession.view()); }
 
   useEffect(function () {
-    // 주행 전에도 지도를 띄운다. 위치를 한 번 받아 러너 자리에 맞춘다
+    // 달리기 전에도 지도를 띄운다. 위치를 한 번 받아 러너 자리에 맞춘다
     runSession.locate();
     const off = runSession.onChange(refresh);
     // 화면이 켜져 있을 때만 시계를 돌린다. 배경에서는 위치 수신이 갱신을 부른다
@@ -65,7 +68,7 @@ export function RunScreen() {
   function onMarkHere() {
     const r = runSession.markHere();
     setNotice(r.marked
-      ? '여기를 표시했습니다. 이번 주행에는 울리지 않고 다음부터 응원합니다'
+      ? '여기를 표시했습니다. 이번 달리기에는 울리지 않고 다음부터 응원합니다'
       : '아직 위치를 받지 못했습니다');
     refresh();
   }
@@ -104,7 +107,7 @@ export function RunScreen() {
       {notice ? <Text style={s.notice}>{notice}</Text> : null}
 
       <View style={s.btns}>
-        <Big label={running ? '종료' : '시작'} tone={running ? 'stop' : 'go'}
+        <Big label={running ? '종료' : '달리기'} tone={running ? 'stop' : 'go'}
           disabled={busy} onPress={running ? onFinish : onStart} />
         <Big label="여기 표시" tone="mark" disabled={!running || busy} onPress={onMarkHere} />
       </View>
@@ -115,7 +118,7 @@ export function RunScreen() {
             showsUserLocation followsUserLocation={running} onPress={onMapPress}>
             {v.segments.map(function (seg, i) {
               return (
-                <Polyline key={'p' + i} strokeColor="#c4452b" strokeWidth={4}
+                <Polyline key={'p' + i} strokeColor={COLOR.path} strokeWidth={4}
                   coordinates={seg.map(function (pt) {
                     return { latitude: pt.lat, longitude: pt.lon };
                   })} />
@@ -126,11 +129,11 @@ export function RunScreen() {
               return [
                 <Circle key={'c' + p.id} center={{ latitude: p.lat, longitude: p.lon }}
                   radius={p.rad || WAYPOINT_RAD}
-                  strokeColor={done ? '#9ca3af' : '#c4452b'}
-                  fillColor={done ? 'rgba(156,163,175,0.15)' : 'rgba(196,69,43,0.15)'} />,
+                  strokeColor={done ? COLOR.spotDone : COLOR.spot}
+                  fillColor={done ? COLOR.spotDoneFill : COLOR.spotFill} />,
                 <Marker key={'m' + p.id} coordinate={{ latitude: p.lat, longitude: p.lon }}
                   title={(i + 1) + '번 지점'} description={done ? '지남' : '대기'}
-                  pinColor={done ? 'gray' : 'red'} />
+                  pinColor={done ? 'gray' : COLOR.spot} />
               ];
             })}
           </MapView>
@@ -176,7 +179,7 @@ export function RunScreen() {
 }
 
 function pinNotice(r) {
-  if (r.ok) return '지점을 지정했습니다. 아직 지나지 않은 곳이면 이번 주행에도 응원합니다';
+  if (r.ok) return '지점을 지정했습니다. 아직 지나지 않은 곳이면 이번 달리기에도 응원합니다';
   if (r.reason === 'no-course') {
     return '아직 코스가 없습니다. 한 번 달리면 그 경로가 코스가 되고, 그때부터 지도에서 지정할 수 있습니다';
   }
@@ -205,7 +208,7 @@ function Big(props) {
   return (
     <Pressable onPress={props.onPress} disabled={props.disabled}
       style={[s.big, s['big_' + props.tone], props.disabled ? s.bigOff : null]}>
-      <Text style={[s.bigText, props.tone === 'mark' ? s.bigTextDark : null]}>{props.label}</Text>
+      <Text style={s.bigText}>{props.label}</Text>
     </Pressable>
   );
 }
@@ -213,31 +216,33 @@ function Big(props) {
 const s = StyleSheet.create({
   root: { flex: 1, paddingHorizontal: 16 },
   head: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', marginTop: 8 },
-  km: { fontSize: 64, fontWeight: '800', fontVariant: ['tabular-nums'], color: '#111827' },
-  kmUnit: { fontSize: 18, color: '#6b7280', marginBottom: 12, marginLeft: 4 },
+  km: { fontSize: 64, fontWeight: '800', fontVariant: ['tabular-nums'], color: COLOR.ink },
+  kmUnit: { fontSize: 18, color: COLOR.inkSoft, marginBottom: 12, marginLeft: 4 },
   grid: { flexDirection: 'row', gap: 8, marginTop: 4 },
-  cell: { flex: 1, backgroundColor: '#f3f4f6', borderRadius: 12, paddingVertical: 10, alignItems: 'center' },
-  cellLabel: { fontSize: 11, color: '#6b7280' },
-  cellValue: { fontSize: 20, fontWeight: '700', fontVariant: ['tabular-nums'], marginTop: 2 },
-  notice: { marginTop: 10, fontSize: 12, color: '#9a6700', lineHeight: 17 },
+  cell: { flex: 1, backgroundColor: COLOR.card, borderRadius: 12, borderWidth: 1,
+    borderColor: COLOR.cardLine, paddingVertical: 10, alignItems: 'center' },
+  cellLabel: { fontSize: 11, color: COLOR.inkSoft },
+  cellValue: { fontSize: 20, fontWeight: '700', fontVariant: ['tabular-nums'], marginTop: 2, color: COLOR.ink },
+  notice: { marginTop: 10, fontSize: 12, color: COLOR.warn, lineHeight: 17 },
   btns: { flexDirection: 'row', gap: 10, marginTop: 14 },
   big: { flex: 1, borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
-  big_go: { backgroundColor: '#c4452b' },
-  big_stop: { backgroundColor: '#374151' },
-  big_mark: { backgroundColor: '#fde8e3', borderWidth: 1, borderColor: '#e8b4a8' },
+  big_go: { backgroundColor: COLOR.run },
+  big_stop: { backgroundColor: COLOR.stop },
+  big_mark: { backgroundColor: COLOR.mark },
   bigOff: { opacity: 0.4 },
-  bigText: { fontSize: 17, fontWeight: '700', color: '#ffffff' },
-  bigTextDark: { color: '#a3391f' },
-  mapBox: { flex: 1, marginTop: 14, marginBottom: 2, borderRadius: 14, overflow: 'hidden', backgroundColor: '#eef1f5' },
+  bigText: { fontSize: 17, fontWeight: '700', color: COLOR.onDark },
+  mapBox: { flex: 1, marginTop: 14, marginBottom: 2, borderRadius: 14, overflow: 'hidden',
+    backgroundColor: COLOR.mapWait },
   map: { flex: 1 },
   mapWait: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  h2: { marginTop: 14, fontSize: 13, fontWeight: '700', color: '#374151' },
-  empty: { marginTop: 4, marginBottom: 10, fontSize: 12, color: '#6b7280', lineHeight: 18 },
+  h2: { marginTop: 14, fontSize: 13, fontWeight: '700', color: COLOR.ink },
+  empty: { marginTop: 4, marginBottom: 10, fontSize: 12, color: COLOR.inkSoft, lineHeight: 18 },
   list: { maxHeight: 160, marginTop: 6, marginBottom: 8 },
-  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' },
-  rowK: { flex: 1, fontSize: 14, fontWeight: '600' },
-  rowDone: { color: '#9ca3af', textDecorationLine: 'line-through' },
-  rowV: { fontSize: 12, color: '#6b7280', marginRight: 14 },
-  del: { fontSize: 12, color: '#c4452b' },
-  arrival: { fontSize: 12, color: '#1a7f37', paddingVertical: 3 }
+  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1,
+    borderBottomColor: COLOR.divider },
+  rowK: { flex: 1, fontSize: 14, fontWeight: '600', color: COLOR.ink },
+  rowDone: { color: COLOR.inkFaint, textDecorationLine: 'line-through' },
+  rowV: { fontSize: 12, color: COLOR.inkSoft, marginRight: 14 },
+  del: { fontSize: 12, color: COLOR.danger },
+  arrival: { fontSize: 12, color: COLOR.ok, paddingVertical: 3 }
 });

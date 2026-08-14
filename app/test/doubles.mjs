@@ -76,6 +76,18 @@ export function fakeSpeech(opts) {
   };
 }
 
+// 알림음 대역. 몇 번 났는지만 센다.
+//
+// 소리는 끝까지 재생됐는지 묻지 않는다. 0.3초짜리 한 소리라 그 물음에 값이 없고,
+// 음성과 달리 판정에 쓰지도 않는다. 시험이 보는 것은 「조작마다 한 번 났는가」다.
+export function fakeCue() {
+  const state = { plays: 0 };
+  return {
+    state,
+    play: function () { state.plays++; }
+  };
+}
+
 // 플랫폼이 주는 모양. expo-location 의 LocationObject 와 같은 구조로 만든다
 export function platformFix(spec) {
   const s = spec || {};
