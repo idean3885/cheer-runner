@@ -13,6 +13,7 @@ import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { DiagnosticScreen } from './src/presentation/screen/DiagnosticScreen';
 import { RunScreen } from './src/presentation/screen/RunScreen';
+import { CourseScreen } from './src/presentation/screen/CourseScreen';
 import { COLOR } from './src/presentation/theme';
 import { diagnosticSession, runSession } from './src/application/wiring';
 import { AutoStartMarker, MARK } from './src/infrastructure/storage/AutoStartMarker';
@@ -39,6 +40,10 @@ export default function App() {
         FileTrace.append('vis', '달리기 자동 시작 표식을 확인했습니다');
         setScreen('run');
         await runSession.start();
+      } else if (AutoStartMarker.consume(MARK.course)) {
+        // 화면만 연다. 달리기를 걸지 않는다
+        FileTrace.append('vis', '코스 화면 표식을 확인했습니다');
+        setScreen('course');
       }
     })();
   }, []);
@@ -58,7 +63,13 @@ export default function App() {
       <SafeAreaView style={s.fill}>
         <StatusBar style="dark" />
         <View style={s.body}>
-          {screen === 'diag' ? <DiagnosticScreen /> : <RunScreen />}
+          {screen === 'diag' ? <DiagnosticScreen /> : null}
+          {screen === 'course' ? (
+            <CourseScreen onClose={function () { setScreen('run'); }} />
+          ) : null}
+          {screen === 'run' ? (
+            <RunScreen onOpenCourses={function () { setScreen('course'); }} />
+          ) : null}
         </View>
       </SafeAreaView>
     </LinearGradient>

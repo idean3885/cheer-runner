@@ -92,7 +92,7 @@ await run('xcrun', ['simctl', 'location', dev, 'set', LAT + ',' + LON]);
 
 // 1. 시작 전 화면. 코스를 비워 첫 실행 상태를 본다
 const docs = await documents(dev);
-['course.json', 'runs.jsonl', 'trace.jsonl', 'session.json', 'auto-run', 'auto-start']
+['course.json', 'courses.json', 'runs.jsonl', 'trace.jsonl', 'session.json', 'auto-run', 'auto-start', 'auto-course']
   .forEach(function (f) { fs.rmSync(path.join(docs, f), { force: true }); });
 await run('xcrun', ['simctl', 'launch', dev, BUNDLE]);
 await sleep(8000);
@@ -124,21 +124,55 @@ await shot(dev, '2-running');
 
 if (!(await alive(dev))) fail('앱이 죽었습니다. 그림만으로는 알기 어려운 상태입니다');
 
-// 3. 위치를 받지 못하는 화면. 지하에서 달리기를 눌렀을 때의 자리다.
+// 3. 코스 화면과 추천. 보관함을 심어 두고 시작 자리를 코스 시작점에 맞춘다.
+// 마지막 한 칸과 저장 두 칸이 모두 찬 상태를 본다. 그것이 지우도록 유도해야 하는 상태다
+const shelfPath = [];
+for (let i = 0; i <= 40; i++) shelfPath.push({ lat: north(4 * i), lon: LON });
+function shelfCourse(id, name, at, spots) {
+  return {
+    id: id, name: name, savedAt: at, path: shelfPath,
+    spots: spots.map(function (m, i) { return { id: 's' + (i + 1), lat: north(m), lon: LON, rad: 30 }; })
+  };
+}
+fs.writeFileSync(path.join(docs, 'courses.json'), JSON.stringify({
+  last: shelfCourse('last', '', 1770000000000, [60, 150]),
+  saved: [
+    shelfCourse('c1', '한강 언덕', 1769900000000, [40, 90, 140]),
+    shelfCourse('c2', '회사 앞 한 바퀴', 1769800000000, [70])
+  ]
+}));
+fs.rmSync(path.join(docs, 'course.json'), { force: true });
+await run('xcrun', ['simctl', 'terminate', dev, BUNDLE], { allowFail: true });
+await run('xcrun', ['simctl', 'location', dev, 'set', LAT + ',' + LON]);
+await run('xcrun', ['simctl', 'launch', dev, BUNDLE]);
+await sleep(9000);
+console.log('추천 카드가 있는 화면');
+await shot(dev, '3-suggest');
+
+// 4. 코스 화면. 호스트에서 화면을 누를 수 없으므로 표식으로 열린 상태로 띄운다
+fs.writeFileSync(path.join(docs, 'auto-course'), '');
+await run('xcrun', ['simctl', 'terminate', dev, BUNDLE], { allowFail: true });
+await run('xcrun', ['simctl', 'launch', dev, BUNDLE]);
+await sleep(6000);
+console.log('코스 화면');
+await shot(dev, '4-courses');
+
+// 5. 위치를 받지 못하는 화면. 지하에서 달리기를 눌렀을 때의 자리다.
 // 시뮬레이터에서 지하를 만들 수는 없으므로 위치 접근을 거두어 같은 결과를 만든다
 await run('xcrun', ['simctl', 'terminate', dev, BUNDLE], { allowFail: true });
 await run('xcrun', ['simctl', 'privacy', dev, 'revoke', 'location', BUNDLE], { allowFail: true });
-['course.json', 'runs.jsonl', 'trace.jsonl', 'session.json', 'auto-run', 'auto-start']
+['course.json', 'courses.json', 'runs.jsonl', 'trace.jsonl', 'session.json', 'auto-run', 'auto-start', 'auto-course']
   .forEach(function (f) { fs.rmSync(path.join(docs, f), { force: true }); });
 await run('xcrun', ['simctl', 'launch', dev, BUNDLE]);
 // 위치 한 건을 기다리는 한계가 8초다. 그 뒤에 판정이 선다
 await sleep(14000);
 console.log('위치를 못 받는 화면');
-await shot(dev, '3-blocked');
+await shot(dev, '5-blocked');
 await run('xcrun', ['simctl', 'privacy', dev, 'grant', 'location-always', BUNDLE], { allowFail: true });
 
 if (!(await alive(dev))) fail('앱이 죽었습니다. 그림만으로는 알기 어려운 상태입니다');
 
-console.log('\n그림 ' + 3 + '장을 만들었습니다. ' + outDir);
+console.log('\n그림 ' + 5 + '장을 만들었습니다. ' + outDir);
 console.log('보는 것: 시간이 흐르는가 · 페이스가 사람 범위인가 · 지도와 지점이 그려지는가 · 빈 공간이 남는가');
 console.log('        못 받는 화면에서 배너가 맨 위에 있는가 · 달리기 버튼이 잠겼는가');
+console.log('        추천 카드가 코스 이름·지점 수를 적는가 · 코스 목록이 칸 수를 적는가');

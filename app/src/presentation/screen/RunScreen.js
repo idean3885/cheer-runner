@@ -42,10 +42,12 @@ function fmtPace(sec) {
   return m + "'" + (s < 10 ? '0' : '') + s + '"';
 }
 
-export function RunScreen() {
+export function RunScreen(props) {
   const [v, setV] = useState(runSession.view());
   const [notice, setNotice] = useState(null);
   const [busy, setBusy] = useState(false);
+  // 추천을 접은 사실을 기억한다. 지운 카드가 10초 뒤 다시 올라오면 지운 것이 아니다
+  const [hidden, setHidden] = useState([]);
 
   function refresh() { setV(runSession.view()); }
 
@@ -118,6 +120,13 @@ export function RunScreen() {
   // 알려도 할 일이 없고, 달리면서 읽을 수 있는 것도 아니다
   const banner = running ? null : (v.blocks || []).map(function (b) { return BANNER[b]; }).filter(Boolean);
 
+  // 추천은 한 개만 띄운다. 가장 가까운 것 하나면 고를 수 있고, 셋을 늘어놓으면
+  // 시작 전에 목록을 읽게 된다. 나머지는 코스 화면에 있다.
+  // 지금 코스와 같은 것은 권하지 않는다. 이미 불러온 것을 다시 불러올 이유가 없다
+  const suggestion = (v.suggested || []).filter(function (c) {
+    return !c.current && hidden.indexOf(c.id) < 0;
+  })[0] || null;
+
   return (
     <View style={s.root}>
       {banner && banner.length ? (
@@ -128,9 +137,40 @@ export function RunScreen() {
         </View>
       ) : null}
 
+      {suggestion ? (
+        <View style={s.suggest}>
+          <Text style={s.suggestK}>
+            {'이 근처에서 달린 코스가 있습니다'}
+          </Text>
+          <Text style={s.suggestV}>
+            {(suggestion.name || '마지막 달리기') + ' · 지점 ' + suggestion.spots + '곳 · '
+              + (suggestion.dist / 1000).toFixed(2) + 'km'}
+          </Text>
+          <View style={s.suggestBtns}>
+            <Pressable style={s.suggestGo} onPress={function () {
+              const r = runSession.loadCourse(suggestion.id);
+              setNotice(r.ok
+                ? '코스를 불러왔습니다. 지점 ' + r.course.spots.length + '곳이 순서대로 응원합니다'
+                : '불러오지 못했습니다');
+              refresh();
+            }}>
+              <Text style={s.suggestGoText}>불러오기</Text>
+            </Pressable>
+            <Pressable hitSlop={8} onPress={function () {
+              setHidden(hidden.concat([suggestion.id]));
+            }}>
+              <Text style={s.suggestSkip}>아니요</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+
       <View style={s.head}>
         <Text style={s.km}>{km}</Text>
         <Text style={s.kmUnit}>km</Text>
+        <Pressable style={s.courseBtn} onPress={props.onOpenCourses} hitSlop={8}>
+          <Text style={s.courseBtnText}>코스</Text>
+        </Pressable>
       </View>
 
       <View style={s.grid}>
@@ -179,7 +219,9 @@ export function RunScreen() {
         )}
       </View>
 
-      <Text style={s.h2}>응원받을 지점 {v.spots.length}곳</Text>
+      <Text style={s.h2}>
+        {v.courseName ? v.courseName + ' · ' : ''}응원받을 지점 {v.spots.length}곳
+      </Text>
       {v.spots.length === 0 ? (
         <Text style={s.empty}>{v.hasCourse
           ? '지도를 눌러 지정하거나, 달리는 중에 «여기 표시» 를 누릅니다.'
@@ -253,6 +295,17 @@ const s = StyleSheet.create({
   banner: { marginTop: 6, marginHorizontal: -4, paddingVertical: 9, paddingHorizontal: 12,
     borderRadius: 10, backgroundColor: COLOR.bannerBg, borderWidth: 1, borderColor: COLOR.bannerLine },
   bannerText: { fontSize: 12.5, lineHeight: 18, color: COLOR.bannerInk, fontWeight: '600' },
+  suggest: { marginTop: 8, padding: 12, borderRadius: 12, backgroundColor: COLOR.card,
+    borderWidth: 1, borderColor: COLOR.run },
+  suggestK: { fontSize: 13, fontWeight: '700', color: COLOR.run },
+  suggestV: { marginTop: 3, fontSize: 13, color: COLOR.ink },
+  suggestBtns: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 10 },
+  suggestGo: { backgroundColor: COLOR.run, borderRadius: 9, paddingVertical: 8, paddingHorizontal: 14 },
+  suggestGoText: { fontSize: 13, fontWeight: '700', color: COLOR.onDark },
+  suggestSkip: { fontSize: 13, color: COLOR.inkSoft },
+  courseBtn: { position: 'absolute', right: 0, bottom: 14, paddingVertical: 6, paddingHorizontal: 12,
+    borderRadius: 9, borderWidth: 1, borderColor: COLOR.run },
+  courseBtnText: { fontSize: 13, fontWeight: '700', color: COLOR.run },
   head: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', marginTop: 8 },
   km: { fontSize: 64, fontWeight: '800', fontVariant: ['tabular-nums'], color: COLOR.ink },
   kmUnit: { fontSize: 18, color: COLOR.inkSoft, marginBottom: 12, marginLeft: 4 },

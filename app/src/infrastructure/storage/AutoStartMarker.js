@@ -8,8 +8,11 @@
 
 import { File, Paths } from 'expo-file-system';
 
-// 진단과 달리기를 따로 띄운다. 확인해야 하는 경로가 둘이므로 표식도 둘이다
-export const MARK = { diagnostic: 'auto-start', run: 'auto-run' };
+// 확인해야 하는 화면마다 표식을 둔다.
+//
+// 코스 화면은 시작을 걸지 않고 화면만 연다. 그 화면은 오른쪽 위 버튼으로 여는 자리인데
+// 호스트에서 화면을 누를 방법이 없어서, 그림을 남기려면 열린 상태로 띄울 길이 필요하다
+export const MARK = { diagnostic: 'auto-start', run: 'auto-run', course: 'auto-course' };
 
 export const AutoStartMarker = {
   // 있으면 지우고 참을 돌려준다

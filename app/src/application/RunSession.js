@@ -8,6 +8,7 @@
 
 import * as Run from '../domain/Run.js';
 import * as Course from '../domain/Course.js';
+import * as Shelf from '../domain/Shelf.js';
 import { windowPace, averagePace, segments } from '../domain/Track.js';
 import { PACE_MIN_DIST } from '../domain/constants.js';
 
@@ -44,6 +45,8 @@ export function createRunSession(deps) {
 
   let run = null;
   let course = Course.createCourse(store ? store.readCourse() : {});
+  // 보관함. 지금 달리는 코스와 수명이 다르다
+  let shelf = Shelf.createShelf(store ? store.readShelf() : {});
   let lastSpokeAt = 0;
   // 달리기를 시작하기 전에도 지도를 러너 자리에 맞춰야 한다. 그때 쓸 마지막으로 안 위치
   let lastKnown = null;
@@ -260,6 +263,78 @@ export function createRunSession(deps) {
     return ok;
   }
 
+  /* ── 보관함 ─────────────────────────────────────────────────── */
+
+  // 지금 코스를 이름 붙여 저장한다. 칸이 차면 거절하고 사유를 낸다.
+  // 화면은 그 사유로 코스 목록을 열어 하나를 지우도록 안내한다
+  function saveCourse(name) {
+    if (!course.path.length && !course.spots.length) {
+      return { ok: false, reason: 'empty-course' };
+    }
+    const r = Shelf.save(shelf, course, name, now());
+    if (!r.ok) {
+      trace.append('mark', '보관함이 차서 저장을 거절했습니다');
+      return r;
+    }
+    // 저장한 코스와 지금 달리는 코스가 같은 것을 가리키게 한다. 이름을 붙인 뒤에
+    // 지점을 하나 더 찍으면 그 자리를 갱신해야 하고, 그러려면 식별자가 같아야 한다
+    course.id = r.course.id;
+    course.name = r.course.name;
+    const written = store ? store.writeShelf(shelf) : true;
+    if (store) store.writeCourse(course);
+    if (!written) {
+      trace.append('err', '보관함 저장에 실패했습니다');
+      onChange();
+      return { ok: false, reason: 'write-failed' };
+    }
+    trace.append('mark', '코스를 저장했습니다: ' + r.course.name);
+    onChange();
+    return r;
+  }
+
+  // 보관함에서 꺼내 지금 코스로 삼는다. 달리는 중에는 바꾸지 않는다.
+  // 달리는 중에 코스를 갈면 이미 지난 지점과 새 지점의 순서가 어긋난다
+  function loadCourse(id) {
+    if (run && run.state === Run.STATE.running) {
+      return { ok: false, reason: 'running' };
+    }
+    const found = Shelf.find(shelf, id);
+    if (!found) return { ok: false, reason: 'not-found' };
+
+    // 꺼낼 때도 복사한다. 지금 코스를 고치는 것이 보관함을 고치는 일이 되면
+    // 불러온 코스에서 지점 하나 지우는 것만으로 저장해 둔 것이 사라진다
+    course = Course.createCourse({
+      id: found.id === Shelf.SLOT.last ? 'course' : found.id,
+      name: found.name,
+      path: found.path.map(function (p) { return { lat: p.lat, lon: p.lon }; }),
+      spots: found.spots.map(function (p) { return { id: p.id, lat: p.lat, lon: p.lon, rad: p.rad }; })
+    });
+    run = null;   // 끝난 달리기 화면을 지운다. 다른 코스의 도달 기록이 남으면 섞인다
+    if (store) store.writeCourse(course);
+    trace.append('mark', '코스를 불러왔습니다: ' + (course.name || '이름 없음')
+      + ' 지점 ' + course.spots.length + '곳');
+    onChange();
+    return { ok: true, course: course };
+  }
+
+  function removeCourse(id) {
+    const ok = Shelf.remove(shelf, id);
+    if (ok && store) store.writeShelf(shelf);
+    if (ok) trace.append('mark', '보관함에서 코스를 지웠습니다');
+    onChange();
+    return ok;
+  }
+
+  // 코스 없이 시작한다. 지점도 기준 경로도 없는 상태로 되돌린다
+  function clearCourse() {
+    if (run && run.state === Run.STATE.running) return false;
+    course = Course.createCourse({});
+    run = null;
+    if (store) store.writeCourse(course);
+    onChange();
+    return true;
+  }
+
   async function finish(reason) {
     const at = now();
     const done = run ? Run.finish(run, at) : { finished: false };
@@ -272,8 +347,13 @@ export function createRunSession(deps) {
       course.path = run.track ? run.track.points.map(function (p) {
         return { lat: p.lat, lon: p.lon };
       }) : course.path;
+      // 마지막 달리기는 항상 보관함에 남는다. 저장을 누르지 않아도 남아야 다음에
+      // 그 코스를 다시 달릴 수 있다. 2회차가 이 앱의 값이고, 1회차 뒤 사용자가
+      // 저장을 눌러야 한다면 그 값이 사용자의 기억에 달린다
+      Shelf.keepLast(shelf, course, at);
       if (store) {
         store.writeCourse(course);
+        store.writeShelf(shelf);
         store.appendRun(done.summary);
       }
       trace.append('mark', '=== 달리기 종료 (' + reason + '). '
@@ -302,13 +382,43 @@ export function createRunSession(deps) {
     return false;
   }
 
+  // 보관함 상태. 화면이 목록을 그리는 데 필요한 것만 담는다.
+  // 경로 점 2,500개를 그대로 올리면 목록을 그릴 때마다 그것을 들고 다닌다
+  function shelfView() {
+    return Shelf.entries(shelf).map(function (e) {
+      return {
+        id: e.course.id,
+        slot: e.slot,
+        name: e.course.name || '',
+        savedAt: e.course.savedAt || null,
+        spots: (e.course.spots || []).length,
+        dist: Shelf.pathLength(e.course),
+        current: e.course.id === course.id
+      };
+    });
+  }
+
+  // 지금 자리에서 시작할 만한 코스. 고르는 것은 사용자다
+  function suggestView() {
+    if (!lastKnown) return [];
+    return Shelf.nearStart(shelf, lastKnown.lat, lastKnown.lon).map(function (e) {
+      return {
+        id: e.course.id, slot: e.slot, name: e.course.name || '',
+        spots: (e.course.spots || []).length, dist: Shelf.pathLength(e.course),
+        away: e.distance, current: e.course.id === course.id
+      };
+    });
+  }
+
   function view() {
     if (!run) {
       return {
         state: 'ready', dist: 0, ms: 0, pace: null, target: null, targetDist: null,
         arrivals: [], spots: course.spots.slice(), fixCount: 0, gapMax: 0,
         here: lastKnown, segments: [], hasCourse: course.path.length > 0,
-        canStart: canStart(), blocks: blocks()
+        canStart: canStart(), blocks: blocks(),
+        courseName: course.name || '', shelf: shelfView(), shelfFull: Shelf.isFull(shelf),
+        suggested: suggestView()
       };
     }
     // 끝난 달리기는 끝난 시각으로 본다. 흐르는 시각을 넣으면 종료 뒤에도 시간이 늘고
@@ -335,7 +445,10 @@ export function createRunSession(deps) {
       segments: t ? segments(t) : [],
       hasCourse: course.path.length > 0,
       // 달리는 중에는 막지 않는다. 이미 시작한 달리기를 화면 상태로 끊으면 기록이 사라진다
-      canStart: false, blocks: []
+      canStart: false, blocks: [],
+      courseName: course.name || '', shelf: shelfView(), shelfFull: Shelf.isFull(shelf),
+      // 달리는 중에는 추천하지 않는다. 코스를 갈 수 없는 상태에서 권하면 누를 곳이 없다
+      suggested: []
     };
   }
 
@@ -350,6 +463,10 @@ export function createRunSession(deps) {
     reapStale: reapStale,
     checkReadiness: checkReadiness,
     setOnline: setOnline,
+    saveCourse: saveCourse,
+    loadCourse: loadCourse,
+    removeCourse: removeCourse,
+    clearCourse: clearCourse,
     view: view,
     course: function () { return course; }
   };

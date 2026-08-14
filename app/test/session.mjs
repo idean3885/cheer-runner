@@ -37,15 +37,21 @@ function fix(spec) {
   };
 }
 
-function fakeStore(seed) {
+function fakeStore(seed, opts) {
+  const o = opts || {};
   let course = seed || {};
+  let shelf = o.shelf || {};
   const runs = [];
   return {
     runs,
     readCourse: function () { return course; },
     writeCourse: function (c) { course = c; return true; },
+    readShelf: function () { return shelf; },
+    // 저장 실패를 시험이 만들 수 있어야 한다. 실패를 삼키면 사용자가 만든 코스가 조용히 사라진다
+    writeShelf: function (sh) { if (o.failShelf) return false; shelf = sh; return true; },
     appendRun: function (s) { runs.push(s); return true; },
-    written: function () { return course; }
+    written: function () { return course; },
+    shelf: function () { return shelf; }
   };
 }
 
@@ -57,7 +63,7 @@ function build(opts) {
   const speech = fakeSpeech(o.speech);
   const cue = fakeCue();
   const network = fakeNetwork(o.network);
-  const store = fakeStore(o.course);
+  const store = fakeStore(o.course, o.store);
   let changes = 0;
   const s = createRunSession({
     location, speech, cue, network, session, store,
@@ -419,6 +425,184 @@ test('위치를 못 받아도 무너지지 않는다', async function () {
   const r = await s.locate();
   assert(r === null, '실패인데 값을 돌려줬습니다');
   assert(s.view().state === 'ready', '상태가 바뀌었습니다');
+});
+
+/* ── 보관함 ───────────────────────────────────────────────────── */
+
+// 한 번 달려서 경로와 지점이 있는 코스를 만든다. 2회차를 보려면 1회차가 있어야 한다
+async function runOnce(s, clock, marks) {
+  await s.start();
+  for (let i = 0; i <= 60; i++) {
+    clock.advance(i === 0 ? 0 : 1000);
+    s.onFixes({ error: null, fixes: [fix({ t: T0 + i * 1000, lat: north(3 * i) })] });
+    if (marks && marks.indexOf(i) >= 0) s.markHere();
+  }
+  return s.finish('user');
+}
+
+test('마지막 달리기는 저장을 누르지 않아도 보관함에 남는다', async function () {
+  const { s, clock, store } = build({ course: { spots: [], path: [] } });
+  await runOnce(s, clock, [20, 40]);
+  const shelf = store.shelf();
+  assert(shelf.last, '마지막 칸이 비었습니다');
+  assert(shelf.last.spots.length === 2, '지점이 ' + shelf.last.spots.length + '곳입니다');
+  assert(shelf.last.path.length > 1, '경로가 남지 않았습니다');
+  const v = s.view();
+  assert(v.shelf.length === 1, '목록에 ' + v.shelf.length + '개입니다');
+  assert(v.shelf[0].slot === 'last', '칸 종류가 다릅니다: ' + v.shelf[0].slot);
+});
+
+test('다시 달리면 마지막 칸만 덮어쓰고 저장한 코스는 남는다', async function () {
+  const { s, clock, store } = build({ course: { spots: [], path: [] } });
+  await runOnce(s, clock, [20]);
+  const saved = s.saveCourse('한강 언덕');
+  assert(saved.ok === true, '저장하지 못했습니다: ' + saved.reason);
+
+  await s.clearCourse();
+  clock.advance(60000);
+  await runOnce(s, clock, [10, 30, 50]);
+
+  const shelf = store.shelf();
+  assert(shelf.saved.length === 1, '저장한 코스가 사라졌습니다');
+  assert(shelf.saved[0].spots.length === 1, '저장한 코스의 지점이 바뀌었습니다');
+  assert(shelf.last.spots.length === 3, '마지막 칸이 덮이지 않았습니다');
+});
+
+test('저장 칸이 차면 사유와 한도를 함께 낸다', async function () {
+  const { s, clock } = build({ course: { spots: [], path: [] } });
+  await runOnce(s, clock, [20]);
+  assert(s.saveCourse('가').ok === true, '첫 저장이 막혔습니다');
+  await s.clearCourse();
+  await runOnce(s, clock, [20]);
+  assert(s.saveCourse('나').ok === true, '둘째 저장이 막혔습니다');
+  await s.clearCourse();
+  await runOnce(s, clock, [20]);
+  const third = s.saveCourse('다');
+  assert(third.ok === false, '한도를 넘겨 받았습니다');
+  assert(third.reason === 'shelf-full', '사유가 다릅니다: ' + third.reason);
+  assert(third.limit === 2, '한도가 ' + third.limit + ' 로 옵니다');
+  assert(s.view().shelfFull === true, '찬 상태를 화면에 알리지 않습니다');
+});
+
+test('보관함에서 하나 지우면 다시 저장할 수 있다', async function () {
+  const { s, clock } = build({ course: { spots: [], path: [] } });
+  await runOnce(s, clock, [20]);
+  const first = s.saveCourse('가');
+  await s.clearCourse();
+  await runOnce(s, clock, [20]);
+  s.saveCourse('나');
+  await s.clearCourse();
+  await runOnce(s, clock, [20]);
+  assert(s.saveCourse('다').ok === false, '찬 상태가 아닙니다');
+
+  assert(s.removeCourse(first.course.id) === true, '지우지 못했습니다');
+  assert(s.saveCourse('다').ok === true, '지웠는데 저장하지 못했습니다');
+});
+
+test('저장 실패를 성공으로 보고하지 않는다', async function () {
+  const { s, clock } = build({ course: { spots: [], path: [] }, store: { failShelf: true } });
+  await runOnce(s, clock, [20]);
+  const r = s.saveCourse('가');
+  assert(r.ok === false, '쓰기가 실패했는데 성공으로 봤습니다');
+  assert(r.reason === 'write-failed', '사유가 다릅니다: ' + r.reason);
+});
+
+test('불러오면 그 코스의 지점과 순서가 지금 코스가 된다', async function () {
+  const { s, clock } = build({ course: { spots: [], path: [] } });
+  await runOnce(s, clock, [10, 30, 50]);
+  const saved = s.saveCourse('세 곳');
+  const ids = s.view().spots.map(function (p) { return p.id; }).join(',');
+
+  await s.clearCourse();
+  assert(s.view().spots.length === 0, '코스가 비워지지 않았습니다');
+
+  const r = s.loadCourse(saved.course.id);
+  assert(r.ok === true, '불러오지 못했습니다: ' + r.reason);
+  const back = s.view();
+  assert(back.spots.length === 3, '지점이 ' + back.spots.length + '곳입니다');
+  assert(back.spots.map(function (p) { return p.id; }).join(',') === ids, '순서가 바뀌었습니다');
+  assert(back.hasCourse === true, '기준 경로가 오지 않았습니다');
+  assert(back.courseName === '세 곳', '이름이 오지 않았습니다: ' + back.courseName);
+});
+
+test('불러온 코스로 달리면 그 순서로 응원한다', async function () {
+  const { s, clock, speech } = build({ course: { spots: [], path: [] } });
+  await runOnce(s, clock, [10, 30]);
+  const saved = s.saveCourse('두 곳');
+  await s.clearCourse();
+  s.loadCourse(saved.course.id);
+
+  clock.advance(60000);
+  await s.start();
+  const before = speech.said.length;
+  for (let i = 0; i <= 60; i++) {
+    clock.advance(i === 0 ? 0 : 1000);
+    s.onFixes({ error: null, fixes: [fix({ t: T0 + 120000 + i * 1000, lat: north(3 * i) })] });
+  }
+  const said = speech.said.slice(before).filter(function (t) { return /번 지점/.test(t); });
+  assert(said.length === 2, '응원이 ' + said.length + '번 나갔습니다: ' + JSON.stringify(said));
+  assert(/1번 지점/.test(said[0]) && /2번 지점/.test(said[1]), '순서가 다릅니다: ' + JSON.stringify(said));
+});
+
+test('불러온 코스를 고쳐도 보관함은 그대로다', async function () {
+  const { s, clock, store } = build({ course: { spots: [], path: [] } });
+  await runOnce(s, clock, [10, 30]);
+  const saved = s.saveCourse('두 곳');
+  await s.clearCourse();
+  s.loadCourse(saved.course.id);
+
+  const first = s.view().spots[0];
+  s.removeSpot(first.id);
+  assert(s.view().spots.length === 1, '지금 코스에서 지워지지 않았습니다');
+  const kept = store.shelf().saved.find(function (c) { return c.id === saved.course.id; });
+  assert(kept.spots.length === 2, '보관함의 코스도 함께 지워졌습니다');
+});
+
+test('달리는 중에는 코스를 바꾸지 않는다', async function () {
+  const { s, clock } = build({ course: { spots: [], path: [] } });
+  await runOnce(s, clock, [20]);
+  const saved = s.saveCourse('가');
+  clock.advance(60000);
+  await s.start();
+  const r = s.loadCourse(saved.course.id);
+  assert(r.ok === false, '달리는 중에 코스를 갈았습니다');
+  assert(r.reason === 'running', '사유가 다릅니다: ' + r.reason);
+  assert(s.clearCourse() === false, '달리는 중에 코스를 비웠습니다');
+});
+
+test('시작 자리가 근처면 그 코스를 추천한다', async function () {
+  const { s, clock } = build({ course: { spots: [], path: [] } });
+  await runOnce(s, clock, [20]);
+  s.saveCourse('여기');
+  await s.clearCourse();
+
+  await s.checkReadiness();   // 위치를 받는다. 대역은 시작점 자리를 준다
+  const list = s.view().suggested;
+  assert(list.length >= 1, '근처인데 추천이 없습니다');
+  assert(list[0].away <= 50, '먼 코스를 권했습니다: ' + Math.round(list[0].away) + 'm');
+});
+
+test('먼 자리에서는 추천하지 않는다', async function () {
+  const { s, clock } = build({
+    course: { spots: [], path: [] },
+    location: { at: { lat: north(3000) } }
+  });
+  await runOnce(s, clock, [20]);
+  s.saveCourse('멀리 있는 시작점');
+  await s.clearCourse();
+  await s.checkReadiness();
+  assert(s.view().suggested.length === 0, '먼데 추천했습니다');
+});
+
+test('지금 달리는 코스는 추천하지 않는다', async function () {
+  const { s, clock } = build({ course: { spots: [], path: [] } });
+  await runOnce(s, clock, [20]);
+  const saved = s.saveCourse('가');
+  s.loadCourse(saved.course.id);
+  await s.checkReadiness();
+  const mine = s.view().suggested.filter(function (c) { return c.id === saved.course.id; });
+  assert(mine.length === 1 && mine[0].current === true,
+    '지금 코스인지가 표시되지 않습니다: ' + JSON.stringify(mine));
 });
 
 /* ── 이탈 판정 기준 ───────────────────────────────────────────── */
