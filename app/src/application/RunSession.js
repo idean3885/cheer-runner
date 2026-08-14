@@ -410,17 +410,22 @@ export function createRunSession(deps) {
     });
   }
 
+  // 달리기 전 화면. 값은 0 이고 대신 시작 조건과 코스 목록이 실린다.
+  // 달리는 중 화면과 따로 둔 이유는 두 화면이 서로 다른 것을 묻기 때문이다.
+  // 하나로 두면 한 함수가 「아직 안 달림」과 「달리는 중」을 겸한다
+  function readyView() {
+    return {
+      state: 'ready', dist: 0, ms: 0, pace: null, target: null, targetDist: null,
+      arrivals: [], spots: course.spots.slice(), fixCount: 0, gapMax: 0,
+      here: lastKnown, segments: [], hasCourse: course.path.length > 0,
+      canStart: canStart(), blocks: blocks(),
+      courseName: course.name || '', shelf: shelfView(), shelfFull: Shelf.isFull(shelf),
+      suggested: suggestView()
+    };
+  }
+
   function view() {
-    if (!run) {
-      return {
-        state: 'ready', dist: 0, ms: 0, pace: null, target: null, targetDist: null,
-        arrivals: [], spots: course.spots.slice(), fixCount: 0, gapMax: 0,
-        here: lastKnown, segments: [], hasCourse: course.path.length > 0,
-        canStart: canStart(), blocks: blocks(),
-        courseName: course.name || '', shelf: shelfView(), shelfFull: Shelf.isFull(shelf),
-        suggested: suggestView()
-      };
-    }
+    if (!run) return readyView();
     // 끝난 달리기는 끝난 시각으로 본다. 흐르는 시각을 넣으면 종료 뒤에도 시간이 늘고
     // 거리는 그대로이므로 페이스가 함께 무너진다
     const at = run.state === Run.STATE.finished && run.finishedAt != null

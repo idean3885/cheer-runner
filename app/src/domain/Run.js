@@ -55,6 +55,18 @@ export function start(run, at) {
   return { started: true };
 }
 
+// 위치를 몇 건 받았고 얼마나 뜸했고 얼마나 정확했나. 거리와 무관한 집계다.
+// 따로 둔 이유는 accept 가 세는 일까지 하면 한 함수가 판정과 집계를 겸하기 때문이다
+function countFix(run, at, c) {
+  const gapMs = run.lastFixAt ? at - run.lastFixAt : 0;
+  if (gapMs > run.gapMax) run.gapMax = gapMs;
+  run.lastFixAt = at;
+  run.fixCount++;
+  if (c.accuracy == null) return;
+  run.accSum += c.accuracy;
+  if (c.accuracy > run.accMax) run.accMax = c.accuracy;
+}
+
 // 종료된 달리기는 위치를 받지 않는다. 이 불변식이 이 함수의 첫 줄이다
 export function accept(run, fix) {
   if (run.state !== STATE.running) {
@@ -67,14 +79,7 @@ export function accept(run, fix) {
     return { accepted: false, reason: 'no-coords' };
   }
 
-  const gapMs = run.lastFixAt ? at - run.lastFixAt : 0;
-  if (gapMs > run.gapMax) run.gapMax = gapMs;
-  run.lastFixAt = at;
-  run.fixCount++;
-  if (c.accuracy != null) {
-    run.accSum += c.accuracy;
-    if (c.accuracy > run.accMax) run.accMax = c.accuracy;
-  }
+  countFix(run, at, c);
 
   if (!run.track) {
     run.track = createTrack(at, c.latitude, c.longitude);

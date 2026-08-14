@@ -1,0 +1,32 @@
+# 기계 관문. 사람이 코드를 읽지 않으므로 이 워크플로우가 검토 자리를 대신한다.
+#
+# 여기 있는 것은 전부 의존 없이 도는 검사다. 설치 단계가 없어서 초 단위로 끝나고,
+# 모든 PR 에서 돌아도 개발 속도를 깎지 않는다. 근거는 docs/adr/0010.
+#
+# 여기 없는 것 둘. 앱 네이티브 빌드는 몇 분이 들어 관문에 넣지 않았고, 화면 확인은
+# 판정이 「사람이 그림을 본다」 이므로 기계가 통과·실패를 낼 수 없다.
+
+name: gates
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # 설치하지 않는다. 검사와 시험 모두 표준 라이브러리만 쓴다
+      - name: 계층 규칙
+        run: node tools/check-layers.mjs
+      - name: 구문·import 해석
+        run: node tools/check-imports.mjs
+      - name: 함수 크기
+        run: node tools/check-function-size.mjs
+      - name: 도메인·응용 시험
+        run: npm test --prefix app

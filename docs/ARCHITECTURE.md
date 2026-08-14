@@ -157,19 +157,20 @@ presentation  ──>  application  ──>  domain
 
 | 층 | 장치 | 막는 것 |
 |---|---|---|
-| 타입 | TypeScript `strict` + `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes` | 배열 접근 뒤 `undefined`, 선택 속성 오용 |
-| 타입 우회 | `@typescript-eslint/no-explicit-any`: error | `any` 로 검사를 끄는 것 |
-| 계층 | `dependency-cruiser` 규칙 | `domain` 이 프레임워크에 의존하는 것 |
-| 함수 크기 | eslint `complexity` 10, `max-depth` 3, `max-lines-per-function` 40, `max-params` 3 | PoC 의 `closeTick` 같은 다역 함수 |
-| 파일 크기 | eslint `max-lines` 300 | 1,900줄 한 파일의 재발 |
-| 조용한 실패 | `no-empty` + `@typescript-eslint/no-unused-vars` | 빈 `catch {}` 로 오류를 삼키는 것 |
-| 도메인 정확성 | Vitest 단위 시험, `domain` 커버리지 하한 90% | 페이스·거리·구간 템포 회귀 |
-| 모의 주입 경계 | 재생 어댑터는 **플랫폼이 주는 모양 그대로** 넣는다. `dependency-cruiser` 로 도메인 값 객체 직접 주입을 막는다 | 어댑터 매핑 버그가 모든 시험을 통과하는 것 |
+| 계층 | `tools/check-layers.mjs` | 도메인이 프레임워크에 의존하는 것. 화면이 어댑터를 직접 잡는 것 |
+| 구문·경로 | `tools/check-imports.mjs` | 구문 오류와 없는 파일을 가리키는 import |
+| 함수 크기 | `tools/check-function-size.mjs` 40줄 (도메인·응용) | 한 함수가 판정과 집계를 겸하는 것 |
+| 도메인 정확성 | `app/test/` 시험 103개 | 페이스·거리·구간 템포·도달 판정 회귀 |
 | 경계 조건 | 합성 표본 (일정 속도·급감속·15초 결손·정확도 200m 잡음·652초 단절) | 실제 달리기에서만 드러나던 결함 |
-| 서식 | Prettier | 서식 논쟁 |
+| 모의 주입 경계 | 재생 어댑터는 **플랫폼이 주는 모양 그대로** 넣는다 | 어댑터 매핑 버그가 모든 시험을 통과하는 것 |
+| 기록 유실 | `app/test/run.mjs` 의 소스 관문 | 덧붙이기를 읽고-다시-쓰기로 구현하는 것 |
 | 이력 | ops-agent `flow` (이슈 → PR) | 이력 없는 변경 |
 
-커버리지 하한을 `domain` 에만 거는 이유가 있다. 화면 커버리지는 숫자만 올라가고 뜻이 없다. 정확성이 걸린 곳은 순수 함수뿐이다.
+전체가 2초 안에 끝나고 설치 단계가 없다. 실패가 규칙 위반 하나만 뜻해야 관문이 신뢰되므로, 판 올림이나 잠금 파일이 실패 원인이 될 수 있는 의존을 두지 않았다. 근거는 [ADR 0010](adr/0010-gates-without-dependencies.md).
+
+관문에 두지 않은 것도 적어 둔다. **타입 검사**는 순수 자바스크립트 프로젝트라 두지 않고, 단위 혼용은 값 객체와 도메인 시험이 막는다. **네이티브 빌드**는 분 단위라 두지 않고 기기로 나갈 때 확인된다. **화면 확인**은 판정이 「사람이 그림을 본다」이므로 기계가 통과·실패를 낼 수 없다.
+
+계층 규칙의 예외는 조립 지점 하나다. 어느 구현체를 어느 포트에 끼우는지 정하는 자리라 정의상 양쪽을 다 안다. 예외를 파일 하나로 못박아 두면 다른 파일이 같은 이유를 들 수 없다.
 
 ## 쓰는 패턴
 
