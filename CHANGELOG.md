@@ -6,9 +6,9 @@
 
 버전을 올릴 때 `app/package.json` 과 `app/app.json` 을 함께 올린다. app.json 의 버전은 프리빌드 때만 네이티브에 반영되므로, 로컬 `app/ios/` (커밋되지 않는 프리빌드 산출물)가 이미 있으면 그 안의 버전 필드(Info.plist `CFBundleShortVersionString`, `MARKETING_VERSION`)도 손으로 맞추거나 프리빌드를 다시 돌린다. 안 맞추면 기기에 낡은 버전 라벨로 설치된다.
 
-## [Unreleased]
+## [0.5.1] - 2026-08-21
 
-### Changed
+### Fixed
 
 - 탭 바 활성 표시를 버튼 모양(알약)에서 표준 색 강조로 되돌렸다
 - 탭 바 아래 공백 밴드를 홈 인디케이터 영역만큼으로 줄이고, 바를 불투명 단색으로 바꿔 뒤 내용 비침을 없앴다
