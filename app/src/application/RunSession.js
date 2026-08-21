@@ -517,6 +517,12 @@ export function createRunSession(deps) {
     });
   }
 
+  // 기록 전체. 최근 것이 앞이다. 기록 화면이 목록을 그리는 데 쓴다
+  function records() {
+    if (!store || !store.readRuns) return [];
+    return store.readRuns().slice().reverse();
+  }
+
   // 이 코스로 달린 기록. 최근 것이 앞이다. 식별자가 우선이고,
   // 저장하며 식별자가 바뀐 경우를 이름이 받친다
   function courseRuns(id, name) {
@@ -608,6 +614,7 @@ export function createRunSession(deps) {
     removeCourse: removeCourse,
     clearCourse: clearCourse,
     courseRuns: courseRuns,
+    records: records,
     view: view,
     course: function () { return course; }
   };

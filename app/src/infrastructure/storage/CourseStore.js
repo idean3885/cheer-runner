@@ -7,11 +7,11 @@
 // 조용히 사라지면 안 된다.
 
 import { File, Paths } from 'expo-file-system';
+import { RUNS_MAX } from '../../domain/constants.js';
 
 const COURSE = 'course.json';
 const SHELF = 'courses.json';
 const RUNS = 'runs.jsonl';
-const RUNS_MAX = 50;
 
 function handle(name) { return new File(Paths.document, name); }
 
@@ -56,6 +56,12 @@ export const CourseStore = {
       const f = handle(RUNS);
       if (!f.exists) f.create();
       f.write(JSON.stringify(summary) + '\n', { append: true });
+      // 보관 상한을 넘으면 오래된 것부터 밀어낸다. 기록에 경로가 실리면서
+      // 무한히 쌓게 두면 파일이 계속 자란다. 종료마다 한 번이라 비용이 문제되지 않는다
+      const lines = f.textSync().split('\n').filter(function (s) { return s.length > 2; });
+      if (lines.length > RUNS_MAX) {
+        f.write(lines.slice(-RUNS_MAX).join('\n') + '\n');
+      }
       return true;
     } catch (e) { return false; }
   },

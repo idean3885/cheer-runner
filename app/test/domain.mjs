@@ -271,6 +271,31 @@ test('종료는 닫힌 구간이 있으면 잔여 구간을 닫는다', function
   near(last.segDist, 15, 2, '잔여 구간 거리');
 });
 
+/* ── 기록 ─────────────────────────────────────────────────────── */
+
+test('기록의 경로는 결손 조각을 유지한 채 상한으로 솎인다', function () {
+  const run = Run.createRun({ spots: [] });
+  Run.start(run, T0);
+  Run.accept(run, fix({ t: T0, speed: 3 }));
+  for (let i = 1; i <= 100; i++) Run.accept(run, fix({ t: T0 + i * 1000, lat: north(3 * i), speed: 3 }));
+  // 수신이 끊겼다 먼 자리에서 돌아온다. 이 사이는 지나지 않은 길이다
+  Run.accept(run, fix({ t: T0 + 130000, lat: north(400), speed: 3 }));
+  for (let i = 1; i <= 50; i++) {
+    Run.accept(run, fix({ t: T0 + 130000 + i * 1000, lat: north(400 + 3 * i), speed: 3 }));
+  }
+  const done = Run.finish(run, T0 + 181000);
+  const p = done.summary.path;
+  assert(p.length === 2, '결손이 경로 조각을 나누지 않았습니다: ' + p.length + '조각');
+
+  // 상한은 근사다. 조각마다 끝점을 지키고 나눗셈이 올림이라 몇 점 넘칠 수 있다
+  const thin = Track.displaySegments(run.track, 10);
+  const total = thin.reduce(function (a, s) { return a + s.length; }, 0);
+  assert(total <= 10 + 2 * thin.length, '상한을 크게 넘게 솎였습니다: ' + total + '점');
+  const first = thin[0][0], last = thin[thin.length - 1].slice(-1)[0];
+  assert(first.lat === LAT, '시작점이 사라졌습니다');
+  near(last.lat, north(550), 0.0001, '끝점');
+});
+
 test('지점이 없던 달리기는 종료에 구간을 만들지 않는다', function () {
   // 구간 하나가 전체와 같으면 같은 것을 두 번 적는 셈이다
   const run = Run.createRun({ spots: [] });

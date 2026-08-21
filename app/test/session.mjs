@@ -312,6 +312,26 @@ async function finishOneRun(s, clock) {
   await s.finish('user');
 }
 
+test('코스 없이 달려도 기록이 남고 경로를 갖는다', async function () {
+  const { s, clock, store } = build({ course: { spots: [], path: [] } });
+  await finishOneRun(s, clock);
+  assert(store.runs.length === 1, '기록이 남지 않았습니다');
+  const rec = store.runs[0];
+  assert(Array.isArray(rec.path) && rec.path.length >= 1, '기록에 경로가 없습니다');
+  assert(rec.path[0].length > 1, '경로 조각에 점이 모자랍니다');
+});
+
+test('기록 목록은 최근 것이 앞이다', async function () {
+  const { s, clock } = build({
+    course: { spots: [], path: [] },
+    store: { runs: [{ startedAt: T0 - 86400000, dist: 1000, ms: 300000, pace: 300 }] }
+  });
+  await finishOneRun(s, clock);
+  const list = s.records();
+  assert(list.length === 2, '기록이 2건이 아닙니다: ' + list.length);
+  assert(list[0].startedAt === T0, '최근 기록이 앞이 아닙니다');
+});
+
 test('이름 붙여 저장하면 그 전 기록도 그 코스의 것이 된다', async function () {
   const { s, clock, store } = build({ course: { spots: [], path: [] } });
   await finishOneRun(s, clock);
