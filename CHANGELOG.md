@@ -2,7 +2,15 @@
 
 눈에 띄는 변경을 기록한다. 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/), 버전은 [유의적 버전](https://semver.org/lang/ko/)을 따른다. 프로토타입 단계라 0.x 로 둔다.
 
+버전은 매 변경마다 올리지 않는다. 미발행 변경은 Unreleased 에 쌓고, 작업이 마무리되거나 충분히 쌓였을 때 사용자가 정한 시점에 한 번에 올린다.
+
 버전을 올릴 때 `app/package.json` 과 `app/app.json` 을 함께 올린다. app.json 의 버전은 프리빌드 때만 네이티브에 반영되므로, 로컬 `app/ios/` (커밋되지 않는 프리빌드 산출물)가 이미 있으면 그 안의 버전 필드(Info.plist `CFBundleShortVersionString`, `MARKETING_VERSION`)도 손으로 맞추거나 프리빌드를 다시 돌린다. 안 맞추면 기기에 낡은 버전 라벨로 설치된다.
+
+## [Unreleased]
+
+### Changed
+
+- 탭 바 활성 표시를 버튼 모양(알약)에서 표준 색 강조로 되돌렸다
 
 ## [0.5.0] - 2026-08-21
 

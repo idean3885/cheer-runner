@@ -95,8 +95,8 @@ const TABS = [
   { key: 'course', label: '코스' }
 ];
 
-// 활성 탭은 기존 버튼 어휘(테마 색 바탕 + 흰 글자)를 그대로 쓴다.
-// 화면마다 다른 생김새가 나오면 어느 것이 눌리는 것인지 배워야 한다
+// 표준 탭 바처럼 활성 탭을 글자 색으로만 표시한다. 바 안에 버튼 모양이 따로 뜨면
+// 눌리는 판이 바인지 버튼인지 배워야 한다
 function TabBar(props) {
   return (
     <View style={s.bar}>
@@ -105,9 +105,7 @@ function TabBar(props) {
         return (
           <Pressable key={t.key} style={s.tab} hitSlop={6}
             onPress={function () { props.onSelect(t.key); }}>
-            <View style={[s.tabPill, on ? s.tabPillOn : null]}>
-              <Text style={[s.tabText, on ? s.tabTextOn : null]}>{t.label}</Text>
-            </View>
+            <Text style={[s.tabText, on ? s.tabTextOn : null]}>{t.label}</Text>
           </Pressable>
         );
       })}
@@ -120,11 +118,9 @@ const s = StyleSheet.create({
   body: { flex: 1 },
   barGround: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 60,
     backgroundColor: COLOR.card },
-  bar: { flexDirection: 'row', gap: 6, paddingVertical: 6, paddingHorizontal: 10,
+  bar: { flexDirection: 'row', paddingVertical: 12,
     borderTopWidth: 1, borderTopColor: COLOR.divider, backgroundColor: COLOR.card },
   tab: { flex: 1, alignItems: 'center' },
-  tabPill: { alignSelf: 'stretch', alignItems: 'center', paddingVertical: 8, borderRadius: 10 },
-  tabPillOn: { backgroundColor: COLOR.run },
   tabText: { fontSize: 14, fontWeight: '700', color: COLOR.inkSoft },
-  tabTextOn: { color: COLOR.onDark }
+  tabTextOn: { color: COLOR.run }
 });
