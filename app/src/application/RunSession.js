@@ -469,8 +469,13 @@ export function createRunSession(deps) {
       // 그 코스를 다시 달릴 수 있다. 2회차가 이 앱의 값이고, 1회차 뒤 사용자가
       // 저장을 눌러야 한다면 그 값이 사용자의 기억에 달린다
       Shelf.keepLast(shelf, course, at);
-      // 어느 코스로 달렸는지를 요약에 남긴다. 코스 화면이 코스별 기록을 이걸로 찾는다
-      const rec = Object.assign({ courseId: course.id, courseName: course.name || '' }, done.summary);
+      // 어느 코스로 달렸고 지점이 어디였는지를 요약에 남긴다. 코스는 뒤에 바뀔 수 있으므로
+      // 기록은 그때의 지점을 제 것으로 갖는다. 기록 상세가 이걸로 핀을 그린다
+      const rec = Object.assign({
+        courseId: course.id,
+        courseName: course.name || '',
+        spots: course.spots.map(function (p) { return { lat: p.lat, lon: p.lon, rad: p.rad }; })
+      }, done.summary);
       if (store) {
         store.writeCourse(course);
         store.writeShelf(shelf);
