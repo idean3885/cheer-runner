@@ -116,10 +116,11 @@ function TabBar(props) {
 const s = StyleSheet.create({
   fill: { flex: 1 },
   body: { flex: 1 },
-  barGround: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 60,
-    backgroundColor: COLOR.card },
+  // 홈 인디케이터 영역(34pt)만큼만 채운다. 크게 깔면 바 아래 공백 밴드가 부풀어 보인다
+  barGround: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 34,
+    backgroundColor: COLOR.barBg },
   bar: { flexDirection: 'row', paddingVertical: 12,
-    borderTopWidth: 1, borderTopColor: COLOR.divider, backgroundColor: COLOR.card },
+    borderTopWidth: 1, borderTopColor: COLOR.divider, backgroundColor: COLOR.barBg },
   tab: { flex: 1, alignItems: 'center' },
   tabText: { fontSize: 14, fontWeight: '700', color: COLOR.inkSoft },
   tabTextOn: { color: COLOR.run }
