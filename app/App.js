@@ -23,6 +23,7 @@ import { FileTrace } from './src/infrastructure/storage/FileTrace';
 export default function App() {
   // 진단은 표식이 있을 때만 열린다. 사람이 여는 길은 없다
   const [screen, setScreen] = useState('run');
+  const [openFirst, setOpenFirst] = useState(false);
   const booted = useRef(false);
 
   // 부팅 시 할 일은 여기서 한다. 화면에 두면 그 화면이 열리지 않는 동안 아무도 하지 않는다.
@@ -48,6 +49,11 @@ export default function App() {
       } else if (AutoStartMarker.consume(MARK.records)) {
         FileTrace.append('vis', '기록 화면 표식을 확인했습니다');
         setScreen('records');
+      } else if (AutoStartMarker.consume(MARK.recordDetail)) {
+        // 첫 기록의 상세를 바로 연다. 호스트는 화면을 누를 수 없다
+        FileTrace.append('vis', '기록 상세 표식을 확인했습니다');
+        setOpenFirst(true);
+        setScreen('records');
       }
     })();
   }, []);
@@ -64,6 +70,8 @@ export default function App() {
 
   return (
     <LinearGradient colors={COLOR.canvas} locations={[0, 0.48, 1]} style={s.fill}>
+      {/* 하단 바 밑 안전영역까지 바 색으로 채운다. 바가 그 위를 덮어 이어져 보인다 */}
+      {screen !== 'diag' ? <View style={s.barGround} pointerEvents="none" /> : null}
       <SafeAreaView style={s.fill}>
         <StatusBar style="dark" />
         <View style={s.body}>
@@ -71,7 +79,7 @@ export default function App() {
           {screen === 'course' ? (
             <CourseScreen onClose={function () { setScreen('run'); }} />
           ) : null}
-          {screen === 'records' ? <RecordsScreen /> : null}
+          {screen === 'records' ? <RecordsScreen openFirst={openFirst} /> : null}
           {screen === 'run' ? <RunScreen /> : null}
         </View>
         {/* 하단 바. 진단은 표식으로만 열리는 화면이라 바에 두지 않는다 */}
@@ -87,6 +95,8 @@ const TABS = [
   { key: 'course', label: '코스' }
 ];
 
+// 활성 탭은 기존 버튼 어휘(테마 색 바탕 + 흰 글자)를 그대로 쓴다.
+// 화면마다 다른 생김새가 나오면 어느 것이 눌리는 것인지 배워야 한다
 function TabBar(props) {
   return (
     <View style={s.bar}>
@@ -95,7 +105,9 @@ function TabBar(props) {
         return (
           <Pressable key={t.key} style={s.tab} hitSlop={6}
             onPress={function () { props.onSelect(t.key); }}>
-            <Text style={[s.tabText, on ? s.tabOn : null]}>{t.label}</Text>
+            <View style={[s.tabPill, on ? s.tabPillOn : null]}>
+              <Text style={[s.tabText, on ? s.tabTextOn : null]}>{t.label}</Text>
+            </View>
           </Pressable>
         );
       })}
@@ -106,9 +118,13 @@ function TabBar(props) {
 const s = StyleSheet.create({
   fill: { flex: 1 },
   body: { flex: 1 },
-  bar: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: COLOR.divider,
+  barGround: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 60,
     backgroundColor: COLOR.card },
-  tab: { flex: 1, alignItems: 'center', paddingVertical: 11 },
+  bar: { flexDirection: 'row', gap: 6, paddingVertical: 6, paddingHorizontal: 10,
+    borderTopWidth: 1, borderTopColor: COLOR.divider, backgroundColor: COLOR.card },
+  tab: { flex: 1, alignItems: 'center' },
+  tabPill: { alignSelf: 'stretch', alignItems: 'center', paddingVertical: 8, borderRadius: 10 },
+  tabPillOn: { backgroundColor: COLOR.run },
   tabText: { fontSize: 14, fontWeight: '700', color: COLOR.inkSoft },
-  tabOn: { color: COLOR.run }
+  tabTextOn: { color: COLOR.onDark }
 });

@@ -3,26 +3,27 @@
 // 모든 달리기는 코스 유무와 무관하게 기록으로 남는다 (ADR 0013). 여기서 그 전부를 본다.
 // 목록과 상세 둘뿐이고 판단은 없다. 기록을 읽어 그린다.
 //
-// 이 결정 이전의 기록에는 경로가 없다. 그 상세는 경로 없음으로 표시한다.
+// 이 결정 이전의 기록에는 경로·지점이 없다. 그 상세는 없는 대로 표시한다.
 
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import MapView, { Polyline, PROVIDER_DEFAULT } from 'react-native-maps';
+import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import MapView, { Marker, Polyline, Circle, PROVIDER_DEFAULT } from 'react-native-maps';
 import { runSession } from '../../application/wiring';
+import { WAYPOINT_RAD } from '../../domain/constants';
 import { COLOR } from '../theme';
 import { fmtDur, fmtPace, fmtWhen, splitText } from '../format';
 
-// 경로 조각을 다 담는 지도 영역. 여백을 조금 두고, 너무 좁으면 최소 폭을 지킨다
-function regionOf(path) {
+// 경로 조각과 지점을 다 담는 지도 영역. 여백을 조금 두고, 너무 좁으면 최소 폭을 지킨다
+function regionOf(rec) {
   let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
-  (path || []).forEach(function (seg) {
-    seg.forEach(function (p) {
-      if (p.lat < minLat) minLat = p.lat;
-      if (p.lat > maxLat) maxLat = p.lat;
-      if (p.lon < minLon) minLon = p.lon;
-      if (p.lon > maxLon) maxLon = p.lon;
-    });
-  });
+  function take(p) {
+    if (p.lat < minLat) minLat = p.lat;
+    if (p.lat > maxLat) maxLat = p.lat;
+    if (p.lon < minLon) minLon = p.lon;
+    if (p.lon > maxLon) maxLon = p.lon;
+  }
+  (rec.path || []).forEach(function (seg) { seg.forEach(take); });
+  spotsOf(rec).forEach(take);
   if (!isFinite(minLat)) return null;
   return {
     latitude: (minLat + maxLat) / 2,
@@ -32,12 +33,18 @@ function regionOf(path) {
   };
 }
 
+// 옛 기록은 spots 가 개수(숫자)였다. 좌표 목록일 때만 지점으로 쓴다
+function spotsOf(rec) {
+  return Array.isArray(rec.spots) ? rec.spots : [];
+}
+
 export function RecordsScreen(props) {
   // 열 때 한 번 읽는다. 이 화면에 있는 동안 기록이 늘어날 일은 없다
   const [records] = useState(function () { return runSession.records(); });
-  const [openIdx, setOpenIdx] = useState(null);
+  // 화면 시험용 표식이 첫 기록의 상세를 바로 연다. 호스트는 화면을 누를 수 없다
+  const [openIdx, setOpenIdx] = useState(props.openFirst && records.length ? 0 : null);
 
-  if (openIdx != null) {
+  if (openIdx != null && records[openIdx]) {
     return <Detail r={records[openIdx]} onBack={function () { setOpenIdx(null); }} />;
   }
   return (
@@ -73,7 +80,10 @@ export function RecordsScreen(props) {
 
 function Detail(props) {
   const r = props.r;
-  const region = regionOf(r.path);
+  const region = regionOf(r);
+  const spots = spotsOf(r);
+  // 달리기 화면과 같은 비율. 상세라고 지도가 화면을 다 차지하면 구간 목록이 밀려난다
+  const { height } = useWindowDimensions();
   return (
     <View style={s.root}>
       <View style={s.head}>
@@ -82,38 +92,48 @@ function Detail(props) {
           <Text style={s.close}>목록</Text>
         </Pressable>
       </View>
-      <Text style={s.sum}>
-        {(r.dist / 1000).toFixed(2)}km · {fmtDur(r.ms)} · 평균 {fmtPace(r.pace)}
-        {r.courseName ? ' · ' + r.courseName : ''}
-      </Text>
-      <View style={s.mapBox}>
-        {region ? (
-          <MapView style={s.map} provider={PROVIDER_DEFAULT} initialRegion={region}>
-            {r.path.map(function (seg, i) {
-              return (
-                <Polyline key={'p' + i} strokeColor={COLOR.path} strokeWidth={4}
-                  coordinates={seg.map(function (pt) {
-                    return { latitude: pt.lat, longitude: pt.lon };
-                  })} />
-              );
-            })}
-          </MapView>
+      <ScrollView>
+        <Text style={s.sum}>
+          {(r.dist / 1000).toFixed(2)}km · {fmtDur(r.ms)} · 평균 {fmtPace(r.pace)}
+          {r.courseName ? ' · ' + r.courseName : ''}
+        </Text>
+        <View style={[s.mapBox, { height: Math.round(height * 0.36) }]}>
+          {region ? (
+            <MapView style={s.map} provider={PROVIDER_DEFAULT} initialRegion={region}>
+              {(r.path || []).map(function (seg, i) {
+                return (
+                  <Polyline key={'p' + i} strokeColor={COLOR.path} strokeWidth={4}
+                    coordinates={seg.map(function (pt) {
+                      return { latitude: pt.lat, longitude: pt.lon };
+                    })} />
+                );
+              })}
+              {spots.map(function (p, i) {
+                return [
+                  <Circle key={'c' + i} center={{ latitude: p.lat, longitude: p.lon }}
+                    radius={p.rad || WAYPOINT_RAD}
+                    strokeColor={COLOR.spot} fillColor={COLOR.spotFill} />,
+                  <Marker key={'m' + i} coordinate={{ latitude: p.lat, longitude: p.lon }}
+                    title={(i + 1) + '번 지점'} pinColor={COLOR.spot} />
+                ];
+              })}
+            </MapView>
+          ) : (
+            <View style={s.mapWait}>
+              <Text style={s.empty}>이 기록에는 경로가 남아 있지 않습니다.</Text>
+            </View>
+          )}
+        </View>
+        <Text style={s.h2}>구간</Text>
+        {(r.splits || []).length === 0 ? (
+          <Text style={s.empty}>구간 기록이 없습니다. 지점을 지나면 구간이 남습니다.</Text>
         ) : (
-          <View style={s.mapWait}>
-            <Text style={s.empty}>이 기록에는 경로가 남아 있지 않습니다.</Text>
-          </View>
-        )}
-      </View>
-      <Text style={s.h2}>구간</Text>
-      {(r.splits || []).length === 0 ? (
-        <Text style={s.empty}>구간 기록이 없습니다. 지점을 지나면 구간이 남습니다.</Text>
-      ) : (
-        <ScrollView style={s.list}>
-          {r.splits.map(function (sp, i) {
+          r.splits.map(function (sp, i) {
             return <Text key={'s' + i} style={s.split}>{splitText(sp)}</Text>;
-          })}
-        </ScrollView>
-      )}
+          })
+        )}
+        <View style={s.foot} />
+      </ScrollView>
     </View>
   );
 }
@@ -133,11 +153,10 @@ const s = StyleSheet.create({
   chev: { fontSize: 13, fontWeight: '700', color: COLOR.run },
   sum: { marginTop: 8, fontSize: 13.5, fontWeight: '600', color: COLOR.ink,
     fontVariant: ['tabular-nums'] },
-  mapBox: { flex: 1, marginTop: 10, borderRadius: 14, overflow: 'hidden',
-    backgroundColor: COLOR.mapWait },
+  mapBox: { marginTop: 10, borderRadius: 14, overflow: 'hidden', backgroundColor: COLOR.mapWait },
   map: { flex: 1 },
   mapWait: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   h2: { marginTop: 12, fontSize: 13, fontWeight: '700', color: COLOR.ink },
-  list: { maxHeight: 170, marginTop: 4, marginBottom: 10 },
-  split: { fontSize: 12, color: COLOR.ok, paddingVertical: 3, fontVariant: ['tabular-nums'] }
+  split: { fontSize: 12, color: COLOR.ok, paddingVertical: 3, fontVariant: ['tabular-nums'] },
+  foot: { height: 16 }
 });

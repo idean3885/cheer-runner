@@ -212,7 +212,7 @@ export function summary(run) {
     splits: run.splits.slice(),
     // 표시용 경로. 기록은 자기 경로를 갖는다. 결손 조각을 유지하고 상한으로 솎는다
     path: t ? displaySegments(t, REC_PATH_MAX) : [],
-    spots: run.spots.length,
+    spotCount: run.spots.length,
     fixCount: run.fixCount,
     gapMax: run.gapMax,
     accAvg: run.fixCount ? run.accSum / run.fixCount : null,

@@ -329,6 +329,23 @@ async function finishOneRun(s, clock) {
   await s.finish('user');
 }
 
+test('기록은 그때의 지점을 제 것으로 갖는다', async function () {
+  // 코스는 뒤에 바뀔 수 있다. 기록 상세가 그리는 핀은 그때의 좌표여야 한다
+  const { s, clock, store } = build({ course: { spots: [], path: [] } });
+  await s.start();
+  s.onFixes({ error: null, fixes: [fix({ t: T0 })] });
+  for (let i = 1; i <= 10; i++) {
+    clock.advance(1000);
+    s.onFixes({ error: null, fixes: [fix({ t: T0 + i * 1000, lat: north(3 * i) })] });
+  }
+  s.markHere();
+  await s.finish('user');
+  const rec = store.runs[0];
+  assert(Array.isArray(rec.spots) && rec.spots.length === 1, '기록에 지점이 없습니다');
+  assert(typeof rec.spots[0].lat === 'number', '지점에 좌표가 없습니다');
+  assert(rec.spotCount === 0, '달리기의 목표 수가 다릅니다: ' + rec.spotCount);
+});
+
 test('코스 없이 달려도 기록이 남고 경로를 갖는다', async function () {
   const { s, clock, store } = build({ course: { spots: [], path: [] } });
   await finishOneRun(s, clock);
