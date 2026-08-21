@@ -17,6 +17,7 @@ export const MOVE_MIN = 10;         // m. 이만큼 늘면 움직인 것으로 �
 export const TICK_MS = 10000;       // 페이스 표본 단위
 export const TICK_WIN = 3;          // 페이스 창. 10초 표본 하나는 값이 튄다
 export const PACE_MIN_DIST = 100;   // m. 이만큼 달리기 전에는 페이스를 내지 않는다. 표본이 모자란다
+export const PACE_SHOW_MAX = 1800;  // 초/km. 이보다 느린 페이스는 정지 잡음이라 화면에 내지 않는다
 export const POINT_MIN = 5;         // m. 이보다 가까운 점은 표시용으로 솎는다
 export const REC_PATH_MAX = 400;    // 기록에 남기는 표시용 경로 점 상한
 export const RUNS_MAX = 50;         // 기록 보관 상한. 넘치면 오래된 것부터 밀려난다

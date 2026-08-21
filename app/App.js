@@ -8,7 +8,7 @@
 // 탭만 없앤 것이고 경로는 그대로다. 근거는 docs/adr/0006.
 
 import { useEffect, useRef, useState } from 'react';
-import { AppState, SafeAreaView, StyleSheet, View } from 'react-native';
+import { AppState, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { DiagnosticScreen } from './src/presentation/screen/DiagnosticScreen';
@@ -71,20 +71,44 @@ export default function App() {
           {screen === 'course' ? (
             <CourseScreen onClose={function () { setScreen('run'); }} />
           ) : null}
-          {screen === 'records' ? (
-            <RecordsScreen onClose={function () { setScreen('run'); }} />
-          ) : null}
-          {screen === 'run' ? (
-            <RunScreen onOpenCourses={function () { setScreen('course'); }}
-              onOpenRecords={function () { setScreen('records'); }} />
-          ) : null}
+          {screen === 'records' ? <RecordsScreen /> : null}
+          {screen === 'run' ? <RunScreen /> : null}
         </View>
+        {/* 하단 바. 진단은 표식으로만 열리는 화면이라 바에 두지 않는다 */}
+        {screen !== 'diag' ? <TabBar current={screen} onSelect={setScreen} /> : null}
       </SafeAreaView>
     </LinearGradient>
   );
 }
 
+const TABS = [
+  { key: 'run', label: '달리기' },
+  { key: 'records', label: '기록' },
+  { key: 'course', label: '코스' }
+];
+
+function TabBar(props) {
+  return (
+    <View style={s.bar}>
+      {TABS.map(function (t) {
+        const on = props.current === t.key;
+        return (
+          <Pressable key={t.key} style={s.tab} hitSlop={6}
+            onPress={function () { props.onSelect(t.key); }}>
+            <Text style={[s.tabText, on ? s.tabOn : null]}>{t.label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 const s = StyleSheet.create({
   fill: { flex: 1 },
-  body: { flex: 1 }
+  body: { flex: 1 },
+  bar: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: COLOR.divider,
+    backgroundColor: COLOR.card },
+  tab: { flex: 1, alignItems: 'center', paddingVertical: 11 },
+  tabText: { fontSize: 14, fontWeight: '700', color: COLOR.inkSoft },
+  tabOn: { color: COLOR.run }
 });

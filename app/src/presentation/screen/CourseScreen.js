@@ -82,11 +82,9 @@ export function CourseScreen(props) {
 
   return (
     <View style={s.root}>
+      {/* 하단 바가 화면을 오가므로 닫기는 없다. 불러오면 달리기 탭으로 돌아간다 */}
       <View style={s.head}>
         <Text style={s.title}>코스</Text>
-        <Pressable onPress={props.onClose} hitSlop={10}>
-          <Text style={s.close}>닫기</Text>
-        </Pressable>
       </View>
 
       {notice ? <Text style={s.notice}>{notice}</Text> : null}
