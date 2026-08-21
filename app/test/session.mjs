@@ -45,6 +45,14 @@ function fakeStore(seed, opts) {
   return {
     runs,
     readRuns: function () { return runs.slice(); },
+    relinkRuns: function (fromId, toId, name) {
+      for (let i = 0; i < runs.length; i++) {
+        if (runs[i].courseId === fromId || runs[i].courseId === toId) {
+          runs[i] = Object.assign({}, runs[i], { courseId: toId, courseName: name || '' });
+        }
+      }
+      return true;
+    },
     readCourse: function () { return course; },
     writeCourse: function (c) { course = c; return true; },
     readShelf: function () { return shelf; },
@@ -291,6 +299,49 @@ test('코스별 달리기 기록을 식별자와 이름으로 찾는다', async 
   // 저장하며 식별자가 바뀌어도 이름이 받친다
   assert(s.courseRuns('새 식별자', '한강').length === 1, '이름으로 찾지 못했습니다');
   assert(s.courseRuns('없는 것', '').length === 0, '다른 코스의 기록이 잡혔습니다');
+});
+
+// 달리기 하나를 만들어 종료까지 간다. 코스-기록 연결 시험들이 같은 밑그림을 쓴다
+async function finishOneRun(s, clock) {
+  await s.start();
+  s.onFixes({ error: null, fixes: [fix({ t: T0 })] });
+  for (let i = 1; i <= 10; i++) {
+    clock.advance(1000);
+    s.onFixes({ error: null, fixes: [fix({ t: T0 + i * 1000, lat: north(3 * i) })] });
+  }
+  await s.finish('user');
+}
+
+test('이름 붙여 저장하면 그 전 기록도 그 코스의 것이 된다', async function () {
+  const { s, clock, store } = build({ course: { spots: [], path: [] } });
+  await finishOneRun(s, clock);
+  assert(store.runs[0].courseId === 'course', '저장 전 기록의 식별자가 다릅니다: ' + store.runs[0].courseId);
+
+  const r = s.saveCourse('한강길');
+  assert(r.ok, '저장 실패: ' + r.reason);
+  const runs = s.courseRuns(s.course().id, '');
+  assert(runs.length === 1, '저장된 코스에서 기록을 찾지 못했습니다');
+  assert(runs[0].courseName === '한강길', '기록의 코스 이름이 이관되지 않았습니다');
+  assert(s.view().lastRun.courseId === s.course().id, '마지막 달리기 카드의 연결이 낡았습니다');
+});
+
+test('마지막 달리기 칸에서도 기록을 찾는다', async function () {
+  const { s, clock } = build({ course: { spots: [], path: [] } });
+  await finishOneRun(s, clock);
+  const last = s.view().shelf.find(function (c) { return c.slot === 'last'; });
+  assert(last, '마지막 칸이 없습니다');
+  assert(last.origin !== last.id, '마지막 칸이 코스 식별자를 따로 남기지 않았습니다');
+  assert(s.courseRuns(last.origin, last.name).length === 1, '마지막 칸의 기록을 찾지 못했습니다');
+});
+
+test('코스를 지워도 기록은 남는다', async function () {
+  const { s, clock, store } = build({ course: { spots: [], path: [] } });
+  await finishOneRun(s, clock);
+  s.saveCourse('한강길');
+  const id = s.course().id;
+  s.removeCourse(id);
+  assert(store.runs.length === 1, '코스를 지우자 기록이 사라졌습니다');
+  assert(s.courseRuns(id, '').length === 1, '기록이 남아 있는데 찾지 못했습니다');
 });
 
 test('저장된 마지막 달리기가 달리기 전 화면에 실린다', async function () {

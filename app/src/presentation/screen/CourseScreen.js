@@ -162,7 +162,7 @@ function Row(props) {
           <Text style={s.del}>지우기</Text>
         </Pressable>
       </View>
-      {props.open ? <CourseStats runs={runSession.courseRuns(c.id, c.name)} /> : null}
+      {props.open ? <CourseStats runs={runSession.courseRuns(c.origin || c.id, c.name)} /> : null}
     </View>
   );
 }

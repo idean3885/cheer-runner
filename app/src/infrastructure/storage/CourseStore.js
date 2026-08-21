@@ -60,6 +60,21 @@ export const CourseStore = {
     } catch (e) { return false; }
   },
 
+  // 기록의 코스 연결을 이관한다. 코스를 저장하며 식별자·이름이 바뀔 때 부른다.
+  // 파일을 통째로 다시 쓴다. 기록이 상한(RUNS_MAX)으로 잘려 있어 크기가 작다
+  relinkRuns(fromId, toId, name) {
+    try {
+      const runs = this.readRuns().map(function (r) {
+        if (r.courseId !== fromId && r.courseId !== toId) return r;
+        return Object.assign({}, r, { courseId: toId, courseName: name || '' });
+      });
+      const f = handle(RUNS);
+      if (!f.exists) f.create();
+      f.write(runs.map(function (r) { return JSON.stringify(r); }).join('\n') + (runs.length ? '\n' : ''));
+      return true;
+    } catch (e) { return false; }
+  },
+
   readRuns() {
     try {
       const f = handle(RUNS);

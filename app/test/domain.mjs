@@ -461,6 +461,17 @@ function courseWith(spec) {
   });
 }
 
+test('보관함 스냅샷은 기록을 찾을 식별자를 남긴다', function () {
+  // 마지막 칸의 식별자는 칸 이름(last)이라 기록의 코스 식별자와 다르다
+  const shelf = Shelf.createShelf({});
+  const course = Course.createCourse({ path: [{ lat: LAT, lon: LON }] });
+  const last = Shelf.keepLast(shelf, course, T0);
+  assert(last.id === 'last', '마지막 칸 식별자가 다릅니다: ' + last.id);
+  assert(last.origin === 'course', '마지막 칸이 코스 식별자를 남기지 않았습니다: ' + last.origin);
+  const saved = Shelf.save(shelf, course, '한강길', T0);
+  assert(saved.course.origin === saved.course.id, '저장 칸의 기록 식별자가 새 식별자가 아닙니다');
+});
+
 test('마지막 칸은 달릴 때마다 덮어쓴다', function () {
   const shelf = Shelf.createShelf({});
   Shelf.keepLast(shelf, courseWith({ spots: [] }), T0);
