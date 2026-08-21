@@ -8,8 +8,8 @@
 //
 // 색은 적지 않고 theme.js 에서 가져온다. 같은 색이 여러 자리에 적히면 한쪽만 바뀐다.
 
-import { useEffect, useState } from 'react';
-import { AppState, Linking, Pressable, ScrollView, StyleSheet, Text, View,
+import { useEffect, useRef, useState } from 'react';
+import { AppState, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
   useWindowDimensions } from 'react-native';
 import MapView, { Marker, Polyline, Circle, PROVIDER_DEFAULT } from 'react-native-maps';
 import { runSession } from '../../application/wiring';
@@ -87,6 +87,18 @@ export function RunScreen(props) {
       : '아직 위치를 받지 못했습니다');
     refresh();
   }
+
+  // 종료 직후 저장 유도. 화면을 옮기지 않고 이 자리에서 이름을 받는다.
+  // 이름 있는 코스로 달렸으면 이미 보관함에 있는 것이라 묻지 않는다
+  const [savePrompt, setSavePrompt] = useState(false);
+  const wasRunning = useRef(false);
+  useEffect(function () {
+    if (v.state === 'running') { wasRunning.current = true; return; }
+    if (v.state === 'finished' && wasRunning.current) {
+      wasRunning.current = false;
+      if (!v.courseName && v.hasCourse) setSavePrompt(true);
+    }
+  }, [v.state]);
 
   const running = v.state === 'running';
   const km = (v.dist / 1000).toFixed(2);
@@ -170,12 +182,6 @@ export function RunScreen(props) {
       <View style={s.head}>
         <Text style={[s.km, short ? s.kmShort : null]}>{km}</Text>
         <Text style={s.kmUnit}>km</Text>
-        <Pressable style={s.courseBtn} onPress={props.onOpenCourses} hitSlop={8}>
-          <Text style={s.courseBtnText}>코스</Text>
-        </Pressable>
-        <Pressable style={[s.courseBtn, s.recordsBtn]} onPress={props.onOpenRecords} hitSlop={8}>
-          <Text style={s.courseBtnText}>기록</Text>
-        </Pressable>
       </View>
 
       <View style={s.grid}>
@@ -275,6 +281,44 @@ export function RunScreen(props) {
         })}
       </ScrollView>
       )}
+
+      {savePrompt ? (
+        <SaveCourseCard
+          summary={'이번 달리기 ' + km + 'km · ' + fmtDur(v.ms) + ' · 지점 ' + v.spots.length + '곳'}
+          onDone={function (msg) { setSavePrompt(false); if (msg) setNotice(msg); refresh(); }} />
+      ) : null}
+    </View>
+  );
+}
+
+// 종료 직후 저장 유도. 코스 탭에 들어가야 저장할 수 있다는 것은 만든 사람도 설명을
+// 읽고야 알았다. 화면을 강제로 옮기지 않는다. 여기서 이름만 받고 마지막 기록은 그대로 남는다
+function SaveCourseCard(props) {
+  const [name, setName] = useState('');
+  function onSave() {
+    const r = runSession.saveCourse(name.trim());
+    if (r.ok) props.onDone('코스로 저장했습니다. 다음에 이 근처에서 추천합니다');
+    else if (r.reason === 'shelf-full') {
+      props.onDone('저장 칸이 ' + r.limit + '개까지입니다. 코스 탭에서 하나 지우고 다시 저장해 주세요');
+    } else props.onDone('저장하지 못했습니다');
+  }
+  return (
+    <View style={s.dim}>
+      <View style={s.sheet}>
+        <Text style={s.sheetK}>이 경로를 코스로 저장할까요?</Text>
+        <Text style={s.sheetV}>{props.summary}</Text>
+        <TextInput style={s.sheetInput} value={name} onChangeText={setName}
+          placeholder="이름 (예: 한강 언덕)" placeholderTextColor={COLOR.inkFaint}
+          maxLength={20} returnKeyType="done" onSubmitEditing={onSave} />
+        <View style={s.sheetBtns}>
+          <Pressable style={s.sheetGo} onPress={onSave}>
+            <Text style={s.sheetGoText}>저장</Text>
+          </Pressable>
+          <Pressable hitSlop={8} onPress={function () { props.onDone(null); }}>
+            <Text style={s.sheetSkip}>나중에</Text>
+          </Pressable>
+        </View>
+      </View>
     </View>
   );
 }
@@ -349,11 +393,6 @@ const s = StyleSheet.create({
   suggestGo: { backgroundColor: COLOR.run, borderRadius: 9, paddingVertical: 8, paddingHorizontal: 14 },
   suggestGoText: { fontSize: 13, fontWeight: '700', color: COLOR.onDark },
   suggestSkip: { fontSize: 13, color: COLOR.inkSoft },
-  // 거리 숫자가 커져도 겹치지 않게 오른쪽에 세로로 쌓는다
-  courseBtn: { position: 'absolute', right: 0, bottom: 42, paddingVertical: 5, paddingHorizontal: 12,
-    borderRadius: 9, borderWidth: 1, borderColor: COLOR.run },
-  recordsBtn: { bottom: 6 },
-  courseBtnText: { fontSize: 13, fontWeight: '700', color: COLOR.run },
   head: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', marginTop: 8 },
   km: { fontSize: 64, fontWeight: '800', fontVariant: ['tabular-nums'], color: COLOR.ink },
   kmShort: { fontSize: 50 },
@@ -394,5 +433,18 @@ const s = StyleSheet.create({
   cellSub: { fontSize: 10.5, color: COLOR.inkSoft, marginTop: 1, fontVariant: ['tabular-nums'] },
   segLive: { fontSize: 12, fontWeight: '600', color: COLOR.run, paddingVertical: 3,
     fontVariant: ['tabular-nums'] },
-  arrival: { fontSize: 12, color: COLOR.ok, paddingVertical: 3 }
+  arrival: { fontSize: 12, color: COLOR.ok, paddingVertical: 3 },
+  // 저장 유도. 화면 위에 덮되 아래 기록이 비치게 어둡기만 준다
+  dim: { position: 'absolute', top: 0, bottom: 0, left: -16, right: -16,
+    backgroundColor: 'rgba(18,18,18,0.35)', alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 28 },
+  sheet: { alignSelf: 'stretch', backgroundColor: '#ffffff', borderRadius: 16, padding: 16 },
+  sheetK: { fontSize: 16, fontWeight: '800', color: COLOR.ink },
+  sheetV: { marginTop: 4, fontSize: 12.5, color: COLOR.inkSoft, fontVariant: ['tabular-nums'] },
+  sheetInput: { marginTop: 12, borderRadius: 10, borderWidth: 1, borderColor: COLOR.divider,
+    paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, color: COLOR.ink },
+  sheetBtns: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 14 },
+  sheetGo: { backgroundColor: COLOR.run, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 18 },
+  sheetGoText: { fontSize: 14, fontWeight: '700', color: COLOR.onDark },
+  sheetSkip: { fontSize: 14, color: COLOR.inkSoft }
 });

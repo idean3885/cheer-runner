@@ -161,6 +161,23 @@ test('제자리에서는 페이스를 내지 않는다', async function () {
   assert(v.pace === null, '표본이 모자란데 페이스 ' + v.pace + ' 를 냈습니다');
 });
 
+test('정지 잡음이 만드는 사람 밖 페이스는 내지 않는다', async function () {
+  // 100m 넘게 걸은 뒤 오래 서 있으면 평균이 상한을 넘는다. 그 값은 소음이다
+  const { s, clock } = build();
+  await s.start();
+  s.onFixes({ error: null, fixes: [fix({ t: T0 })] });
+  for (let i = 1; i <= 40; i++) {
+    clock.advance(1000);
+    s.onFixes({ error: null, fixes: [fix({ t: T0 + i * 1000, lat: north(3 * i) })] });
+  }
+  // 120m 을 만들고 한 시간을 서 있는다
+  clock.advance(3600000);
+  s.onFixes({ error: null, fixes: [fix({ t: T0 + 40000 + 3600000, lat: north(120), speed: 0 })] });
+  const v = s.view();
+  assert(v.pace === null, '정지 잡음 페이스를 냈습니다: ' + v.pace);
+  assert(v.wPace === null, '정지 잡음 창 페이스를 냈습니다: ' + v.wPace);
+});
+
 test('충분히 달리면 페이스를 낸다', async function () {
   const { s, clock } = build();
   await s.start();

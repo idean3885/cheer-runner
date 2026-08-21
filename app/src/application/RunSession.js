@@ -10,7 +10,7 @@ import * as Run from '../domain/Run.js';
 import * as Course from '../domain/Course.js';
 import * as Shelf from '../domain/Shelf.js';
 import { windowPace, averagePace, segments } from '../domain/Track.js';
-import { PACE_MIN_DIST } from '../domain/constants.js';
+import { PACE_MIN_DIST, PACE_SHOW_MAX } from '../domain/constants.js';
 
 export const OWNER = 'run';
 export const MAX_MS = 4 * 60 * 60 * 1000;   // 달리기 상한 4시간. 잊고 둔 구독을 끊는다
@@ -304,7 +304,12 @@ export function createRunSession(deps) {
   // 사람이 낼 수 없는 페이스가 나오고, 그것을 화면에 그리면 고장으로 보인다
   function paceToShow(track, at) {
     if (track.dist < PACE_MIN_DIST) return null;
-    return averagePace(track, at);
+    return capPace(averagePace(track, at));
+  }
+
+  // 정지 잡음이 만드는 세 자리 분 페이스는 값이 아니라 소음이다
+  function capPace(sec) {
+    return sec != null && sec <= PACE_SHOW_MAX ? sec : null;
   }
 
   function paceWords(sec) {
@@ -574,8 +579,8 @@ export function createRunSession(deps) {
       dist: t ? t.dist : 0,
       ms: run.startedAt ? at - run.startedAt : 0,
       pace: t ? paceToShow(t, at) : null,
-      // 현재(창) 페이스는 보조다. 진행 중 구간은 지점 목록 자리에서 실시간으로 갱신된다
-      wPace: t ? windowPace(t) : null,
+      // 현재(창) 페이스는 보조다. 정지 잡음이 만드는 사람 밖 값은 내지 않는다
+      wPace: t ? capPace(windowPace(t)) : null,
       seg: Run.currentSegment(run, at),
       splits: run.splits.slice(),
       target: target,

@@ -42,11 +42,9 @@ export function RecordsScreen(props) {
   }
   return (
     <View style={s.root}>
+      {/* 하단 바가 화면을 오가므로 닫기는 없다 */}
       <View style={s.head}>
         <Text style={s.title}>기록</Text>
-        <Pressable onPress={props.onClose} hitSlop={10}>
-          <Text style={s.close}>닫기</Text>
-        </Pressable>
       </View>
       {records.length === 0 ? (
         <Text style={s.empty}>아직 기록이 없습니다. 달리기를 마치면 여기 남습니다.</Text>
