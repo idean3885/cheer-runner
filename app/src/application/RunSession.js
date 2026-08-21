@@ -385,8 +385,14 @@ export function createRunSession(deps) {
     }
     // 저장한 코스와 지금 달리는 코스가 같은 것을 가리키게 한다. 이름을 붙인 뒤에
     // 지점을 하나 더 찍으면 그 자리를 갱신해야 하고, 그러려면 식별자가 같아야 한다
+    const oldId = course.id;
     course.id = r.course.id;
     course.name = r.course.name;
+    // 저장된 코스는 자기 기록을 항상 갖는다. 식별자가 바뀌면 기록을 함께 이관한다 (ADR 0012)
+    if (store && store.relinkRuns) store.relinkRuns(oldId, course.id, course.name);
+    if (lastRun && (lastRun.courseId === oldId || lastRun.courseId === course.id)) {
+      lastRun = Object.assign({}, lastRun, { courseId: course.id, courseName: course.name });
+    }
     const written = store ? store.writeShelf(shelf) : true;
     if (store) store.writeCourse(course);
     if (!written) {
@@ -498,6 +504,9 @@ export function createRunSession(deps) {
     return Shelf.entries(shelf).map(function (e) {
       return {
         id: e.course.id,
+        // 기록을 찾을 코스 식별자. 마지막 칸은 칸 식별자(last)와 다르다.
+        // 이전 데이터에는 없을 수 있어 칸 식별자로 받친다
+        origin: e.course.origin || e.course.id,
         slot: e.slot,
         name: e.course.name || '',
         savedAt: e.course.savedAt || null,

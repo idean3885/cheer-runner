@@ -34,6 +34,8 @@ export function createShelf(spec) {
 function snapshot(course, name, at) {
   return {
     id: course.id,
+    // 기록을 찾을 코스 식별자. 칸 식별자(last)와 코스 식별자가 다를 수 있어 따로 남긴다
+    origin: course.id,
     name: name != null ? name : (course.name || ''),
     savedAt: at,
     path: (course.path || []).map(function (p) { return { lat: p.lat, lon: p.lon }; }),
@@ -73,6 +75,7 @@ export function save(shelf, course, name, at) {
   }
   const entry = snapshot(course, name, at2);
   entry.id = nextId(shelf);
+  entry.origin = entry.id;   // 새 식별자를 받았으니 기록도 이 식별자로 이관된다 (세션이 한다)
   shelf.saved.push(entry);
   return { ok: true, slot: SLOT.saved, course: entry };
 }
