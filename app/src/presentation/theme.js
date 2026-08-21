@@ -27,6 +27,7 @@ export const COLOR = {
 
   // 지도
   path: '#17a1fa',            // 달린 경로
+  coursePath: 'rgba(18,112,176,0.45)',   // 코스 기준 경로. 실제 궤적과 구분되게 옅다
   spot: '#ff8a9d',            // 아직 안 지난 지점
   spotFill: 'rgba(255,138,157,0.20)',
   spotDone: '#9ca3af',        // 지난 지점

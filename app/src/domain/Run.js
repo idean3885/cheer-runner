@@ -32,7 +32,8 @@ export function createRun(spec) {
     spots: s.spots || [],      // 지정된 지점. 순서대로 하나씩 목표가 된다
     nextIdx: 0,
     track: null,
-    arrivals: [],              // { idx, at, segMs, segDist, pace }
+    arrivals: [],              // 도달 기록. 응원과 순번 판정의 근거 { idx, at, segMs, segDist, pace }
+    splits: [],                // 구간 기록. 지점을 지나는 순간마다 닫힌다 { by, idx, at, segMs, segDist, pace }
     fixCount: 0,
     gapMax: 0,
     lastFixAt: null,
@@ -117,27 +118,39 @@ export function distanceToTarget(run, lat, lon) {
   return t ? haversine(lat, lon, t.lat, t.lon) : null;
 }
 
+// 구간을 닫는다. 지점을 지나는 순간이 여기 모인다 (도달·달리며 생성·종료).
+// 어느 경로로 닫혀도 평균페이스는 건드리지 않는다. 지점은 구간만 닫는다
+function closeSplit(run, at, by, idx) {
+  const segMs = at - run.segAt;
+  const segDist = run.track.dist - run.segDist0;
+  const record = {
+    by: by, idx: idx, at: at,
+    segMs: segMs, segDist: segDist,
+    pace: paceOf(segDist, segMs)
+  };
+  run.splits.push(record);
+  run.segAt = at;
+  run.segDist0 = run.track.dist;
+  return record;
+}
+
 function checkArrival(run, at, c) {
   const t = currentTarget(run);
   if (!t) return null;
   const d = haversine(c.latitude, c.longitude, t.lat, t.lon);
   if (d > t.rad) return null;
 
-  const segMs = at - run.segAt;
-  const segDist = run.track.dist - run.segDist0;
-  const pace = paceOf(segDist, segMs);
+  const split = closeSplit(run, at, 'arrive', run.nextIdx);
   const record = {
     idx: run.nextIdx,
     at: at,
-    segMs: segMs,
-    segDist: segDist,
-    pace: pace != null ? pace : averagePace(run.track, at),
+    segMs: split.segMs,
+    segDist: split.segDist,
+    pace: split.pace != null ? split.pace : averagePace(run.track, at),
     isLast: run.nextIdx === run.spots.length - 1
   };
   run.arrivals.push(record);
   run.nextIdx++;
-  run.segAt = at;
-  run.segDist0 = run.track.dist;
   return record;
 }
 
@@ -149,8 +162,26 @@ export function addSpot(run, spot) {
   return true;
 }
 
+// 달리며 지점을 만든 자리는 곧 지나는 자리다. 그래서 구간을 닫는다.
+// 시각은 마지막 위치의 것을 쓴다. 터치의 벽시계는 위치 시계와 다를 수 있다
+export function passSpot(run, idx) {
+  if (run.state !== STATE.running || !run.track) return null;
+  return closeSplit(run, run.track.lastAt, 'mark', idx);
+}
+
+// 진행 중 구간. 마지막으로 닫힌 자리부터 지금까지다
+export function currentSegment(run, at) {
+  if (run.state !== STATE.running || !run.track || run.segAt == null) return null;
+  const ms = at - run.segAt;
+  const dist = run.track.dist - run.segDist0;
+  return { ms: ms, dist: dist, pace: paceOf(dist, ms) };
+}
+
 export function finish(run, at) {
   if (run.state !== STATE.running) return { finished: false, reason: 'not-running' };
+  // 이미 닫힌 구간이 있으면 마지막 지점부터 종료까지도 구간이다.
+  // 하나도 없으면 닫지 않는다. 전체 요약과 같은 것을 두 번 적게 된다
+  if (run.track && run.splits.length > 0) closeSplit(run, at, 'finish', null);
   run.state = STATE.finished;
   run.finishedAt = at;
   return { finished: true, summary: summary(run) };
@@ -178,6 +209,7 @@ export function summary(run) {
     pace: t ? averagePace(t, endAt) : null,
     windowPace: t ? windowPace(t) : null,
     arrivals: run.arrivals.slice(),
+    splits: run.splits.slice(),
     spots: run.spots.length,
     fixCount: run.fixCount,
     gapMax: run.gapMax,

@@ -9,12 +9,14 @@
 // 색은 적지 않고 theme.js 에서 가져온다. 같은 색이 여러 자리에 적히면 한쪽만 바뀐다.
 
 import { useEffect, useState } from 'react';
-import { AppState, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AppState, Linking, Pressable, ScrollView, StyleSheet, Text, View,
+  useWindowDimensions } from 'react-native';
 import MapView, { Marker, Polyline, Circle, PROVIDER_DEFAULT } from 'react-native-maps';
 import { runSession } from '../../application/wiring';
 import { BLOCK } from '../../application/RunSession';
 import { WAYPOINT_RAD } from '../../domain/constants';
 import { COLOR } from '../theme';
+import { fmtDur, fmtPace, fmtWhen, splitText } from '../format';
 
 // 시작 조건을 다시 보는 간격. 위치 서비스는 바뀌었다고 알려 주지 않으므로 물어봐야 한다.
 // 앞으로 돌아올 때도 보므로 이 간격이 유일한 통로는 아니다
@@ -29,19 +31,6 @@ const BANNER = {
   [BLOCK.fix]: '위치를 받지 못하고 있습니다. 지하나 실내면 하늘이 보이는 곳으로 나가 주세요',
   [BLOCK.offline]: '인터넷이 끊겨 지도를 그릴 수 없습니다. 연결을 확인해 주세요'
 };
-
-function fmtDur(ms) {
-  const s = Math.floor(ms / 1000);
-  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
-  const two = function (n) { return (n < 10 ? '0' : '') + n; };
-  return (h > 0 ? h + ':' : '') + two(m) + ':' + two(sec);
-}
-
-function fmtPace(sec) {
-  if (sec == null || !isFinite(sec)) return '--\'--"';
-  const m = Math.floor(sec / 60), s = Math.round(sec % 60);
-  return m + "'" + (s < 10 ? '0' : '') + s + '"';
-}
 
 export function RunScreen(props) {
   const [v, setV] = useState(runSession.view());
@@ -101,6 +90,12 @@ export function RunScreen(props) {
 
   const running = v.state === 'running';
   const km = (v.dist / 1000).toFixed(2);
+
+  // 기기 대응. 13 미니 같은 짧은 화면에서 지도가 고정 요소에 눌려 작아진다.
+  // 지도에 화면 높이의 몫을 보장하고, 짧은 화면에서는 큰 글자와 목록을 줄인다
+  const { height } = useWindowDimensions();
+  const short = height < 830;
+  const mapMin = { minHeight: Math.round(height * 0.36) };
 
   // 지도를 러너 자리에 맞춘다. 지도를 손으로 옮긴 뒤에는 따라가지 않는다.
   // 달리는 중에 화면이 계속 튀면 지점을 찍을 수 없다
@@ -173,7 +168,7 @@ export function RunScreen(props) {
       ) : null}
 
       <View style={s.head}>
-        <Text style={s.km}>{km}</Text>
+        <Text style={[s.km, short ? s.kmShort : null]}>{km}</Text>
         <Text style={s.kmUnit}>km</Text>
         <Pressable style={s.courseBtn} onPress={props.onOpenCourses} hitSlop={8}>
           <Text style={s.courseBtnText}>코스</Text>
@@ -182,7 +177,9 @@ export function RunScreen(props) {
 
       <View style={s.grid}>
         <Cell label="시간" value={fmtDur(v.ms)} />
-        <Cell label="페이스" value={fmtPace(v.pace)} />
+        {/* 메인은 평균 페이스다. 지점을 찍어도 재설정되지 않는다. 현재(창) 페이스는 보조 */}
+        <Cell label="평균 페이스" value={fmtPace(v.pace)}
+          sub={v.wPace != null ? '현재 ' + fmtPace(v.wPace) : null} />
         <Cell label="다음 지점" value={targetText(v)} />
       </View>
 
@@ -196,10 +193,17 @@ export function RunScreen(props) {
         <Big label="여기 표시" tone="mark" disabled={busy || !v.canMark} onPress={onMarkHere} />
       </View>
 
-      <View style={s.mapBox}>
+      <View style={[s.mapBox, mapMin]}>
         {region ? (
           <MapView style={s.map} provider={PROVIDER_DEFAULT} initialRegion={region}
             showsUserLocation followsUserLocation={running} onPress={onMapPress}>
+            {/* 기준 경로. 지난 달리기의 길이 어디였는지가 달리기 전에도 보인다 */}
+            {v.coursePath && v.coursePath.length > 1 ? (
+              <Polyline strokeColor={COLOR.coursePath} strokeWidth={3} lineDashPattern={[6, 6]}
+                coordinates={v.coursePath.map(function (pt) {
+                  return { latitude: pt.lat, longitude: pt.lon };
+                })} />
+            ) : null}
             {v.segments.map(function (seg, i) {
               return (
                 <Polyline key={'p' + i} strokeColor={COLOR.path} strokeWidth={4}
@@ -228,7 +232,11 @@ export function RunScreen(props) {
         )}
       </View>
 
+      {/* 종료 직후가 아니어도 마지막 달리기를 볼 수 있어야 한다. 달리는 중에는 계기판이 그 자리다 */}
+      {v.state === 'ready' && v.lastRun ? <LastRunCard r={v.lastRun} /> : null}
+
       <Text style={s.h2}>
+        {v.state === 'finished' ? '달리기 기록 · ' : ''}
         {v.courseName ? v.courseName + ' · ' : ''}응원받을 지점 {v.spots.length}곳
       </Text>
       {v.spots.length === 0 ? (
@@ -236,7 +244,7 @@ export function RunScreen(props) {
           ? '지도를 눌러 지정하거나, 달리는 중에 «여기 표시» 를 누릅니다.'
           : '먼저 한 번 달립니다. 그 경로가 코스가 되고, 그때부터 지도에서 지정할 수 있습니다. 달리는 중에는 «여기 표시» 로 남깁니다.'}</Text>
       ) : (
-      <ScrollView style={s.list}>
+      <ScrollView style={[s.list, short ? s.listShort : null]}>
         {v.spots.map(function (p, i) {
           const done = v.arrivals.some(function (a) { return a.idx === i; });
           return (
@@ -251,11 +259,15 @@ export function RunScreen(props) {
             </View>
           );
         })}
-        {v.arrivals.map(function (a) {
+        {/* 진행 중 구간. 마지막으로 지난 지점부터 지금까지가 실시간으로 바뀐다 */}
+        {running && v.seg ? (
+          <Text style={s.segLive}>
+            진행 구간 {Math.round(v.seg.dist)}m · {fmtPace(v.seg.pace)}
+          </Text>
+        ) : null}
+        {v.splits.map(function (sp, i) {
           return (
-            <Text key={'a' + a.idx} style={s.arrival}>
-              {a.idx + 1}번 지점 도착 · 구간 {Math.round(a.segDist)}m · {fmtPace(a.pace)}
-            </Text>
+            <Text key={'s' + i} style={s.arrival}>{splitText(sp)}</Text>
           );
         })}
       </ScrollView>
@@ -274,11 +286,29 @@ function pinNotice(r) {
 }
 
 // 목표가 없는 것과 아직 거리를 모르는 것은 다르다. 다 지났는데 계산 중으로 두면
-// 러너가 남은 지점이 있다고 읽는다
+// 러너가 남은 지점이 있다고 읽는다. 달리기 전에는 지나간 것이 없으므로 대기다
 function targetText(v) {
+  if (v.state === 'ready') return v.spots.length ? '대기' : '없음';
   if (v.target) return v.targetDist != null ? Math.round(v.targetDist) + 'm' : '계산 중';
   if (v.spots.length === 0) return '없음';
   return '모두 지남';
+}
+
+// 마지막 달리기. 이전 빌드가 남긴 요약에는 구간이 없으므로 있는 것만 그린다
+function LastRunCard(props) {
+  const r = props.r;
+  return (
+    <View style={s.lastRun}>
+      <Text style={s.lastRunK}>마지막 달리기</Text>
+      <Text style={s.lastRunV}>
+        {fmtWhen(r.startedAt)} · {(r.dist / 1000).toFixed(2)}km · {fmtDur(r.ms)}
+        {' · 평균 '}{fmtPace(r.pace)}
+      </Text>
+      {(r.splits || []).map(function (sp, i) {
+        return <Text key={'ls' + i} style={s.lastRunSplit}>{splitText(sp)}</Text>;
+      })}
+    </View>
+  );
 }
 
 function Cell(props) {
@@ -286,6 +316,7 @@ function Cell(props) {
     <View style={s.cell}>
       <Text style={s.cellLabel}>{props.label}</Text>
       <Text style={s.cellValue}>{props.value}</Text>
+      {props.sub ? <Text style={s.cellSub}>{props.sub}</Text> : null}
     </View>
   );
 }
@@ -320,6 +351,7 @@ const s = StyleSheet.create({
   courseBtnText: { fontSize: 13, fontWeight: '700', color: COLOR.run },
   head: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', marginTop: 8 },
   km: { fontSize: 64, fontWeight: '800', fontVariant: ['tabular-nums'], color: COLOR.ink },
+  kmShort: { fontSize: 50 },
   kmUnit: { fontSize: 18, color: COLOR.inkSoft, marginBottom: 12, marginLeft: 4 },
   grid: { flexDirection: 'row', gap: 8, marginTop: 4 },
   cell: { flex: 1, backgroundColor: COLOR.card, borderRadius: 12, borderWidth: 1,
@@ -341,11 +373,21 @@ const s = StyleSheet.create({
   h2: { marginTop: 14, fontSize: 13, fontWeight: '700', color: COLOR.ink },
   empty: { marginTop: 4, marginBottom: 10, fontSize: 12, color: COLOR.inkSoft, lineHeight: 18 },
   list: { maxHeight: 160, marginTop: 6, marginBottom: 8 },
+  listShort: { maxHeight: 110 },
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1,
     borderBottomColor: COLOR.divider },
   rowK: { flex: 1, fontSize: 14, fontWeight: '600', color: COLOR.ink },
   rowDone: { color: COLOR.inkFaint, textDecorationLine: 'line-through' },
   rowV: { fontSize: 12, color: COLOR.inkSoft, marginRight: 14 },
   del: { fontSize: 12, color: COLOR.danger },
+  lastRun: { marginTop: 12, padding: 12, borderRadius: 12, backgroundColor: COLOR.card,
+    borderWidth: 1, borderColor: COLOR.cardLine },
+  lastRunK: { fontSize: 11, color: COLOR.inkSoft, fontWeight: '700' },
+  lastRunV: { marginTop: 3, fontSize: 13, fontWeight: '600', color: COLOR.ink,
+    fontVariant: ['tabular-nums'] },
+  lastRunSplit: { marginTop: 3, fontSize: 12, color: COLOR.ok, fontVariant: ['tabular-nums'] },
+  cellSub: { fontSize: 10.5, color: COLOR.inkSoft, marginTop: 1, fontVariant: ['tabular-nums'] },
+  segLive: { fontSize: 12, fontWeight: '600', color: COLOR.run, paddingVertical: 3,
+    fontVariant: ['tabular-nums'] },
   arrival: { fontSize: 12, color: COLOR.ok, paddingVertical: 3 }
 });

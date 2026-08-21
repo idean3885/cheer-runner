@@ -1,6 +1,6 @@
 {
   "name": "cheer-runner",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "main": "index.js",
   "dependencies": {
     "expo": "~57.0.12",
@@ -22,6 +22,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "test": "node --no-warnings test/domain.mjs && node --no-warnings test/session.mjs && node --no-warnings test/run.mjs",
+    "coverage": "c8 --all --include 'src/domain/**' --include 'src/application/**' --check-coverage --lines 80 --reporter=text-summary npm test",
     "test:device": "node --no-warnings test/device.mjs && node --no-warnings test/device-run.mjs",
     "test:device:diag": "node --no-warnings test/device.mjs",
     "test:device:run": "node --no-warnings test/device-run.mjs",
@@ -29,5 +30,8 @@
     "build:device": "COCOAPODS_PARALLEL_CODE_SIGN=NO xcodebuild -workspace ios/app.xcworkspace -scheme app -configuration Release -destination 'generic/platform=iOS' -allowProvisioningUpdates build | tail -2",
     "test:screen": "node --no-warnings test/screen.mjs"
   },
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "c8": "^12.0.0"
+  }
 }

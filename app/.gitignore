@@ -41,3 +41,6 @@ yarn-error.*
 /android
 
 tools/shots/
+
+# c8 커버리지 산출물
+coverage/

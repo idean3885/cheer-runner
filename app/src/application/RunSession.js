@@ -51,6 +51,9 @@ export function createRunSession(deps) {
   let lastSpokeAt = 0;
   // 달리기를 시작하기 전에도 지도를 러너 자리에 맞춰야 한다. 그때 쓸 마지막으로 안 위치
   let lastKnown = null;
+  // 마지막 달리기 요약. 종료 직후가 아니어도 화면이 기록을 보여줄 수 있어야 한다.
+  // 파일은 한 번만 읽고 이후에는 종료가 갱신한다. 화면이 매초 view 를 부르기 때문이다
+  let lastRun = store && store.readRuns ? (store.readRuns().slice(-1)[0] || null) : null;
 
   // 시작할 수 있는 상태인가. 확인하기 전에는 모르는 상태로 둔다.
   // 참으로 두고 시작하면 지하에서 눌렀을 때 시작이 실패하며 바로 풀리고,
@@ -296,11 +299,10 @@ export function createRunSession(deps) {
     say(parts.join('. '));
   }
 
+  // 메인 계기판은 평균 페이스다. 지점 행위가 값을 재설정하지 않는다 (ADR 0011).
   // 표본이 모자라면 값을 내지 않는다. 제자리에서 잡음 몇 미터를 긴 시간으로 나누면
   // 사람이 낼 수 없는 페이스가 나오고, 그것을 화면에 그리면 고장으로 보인다
   function paceToShow(track, at) {
-    const w = windowPace(track);
-    if (w != null) return w;
     if (track.dist < PACE_MIN_DIST) return null;
     return averagePace(track, at);
   }
@@ -316,8 +318,11 @@ export function createRunSession(deps) {
     const last = run && run.track ? run.track.prev : null;
     if (!last) return { marked: false, reason: 'no-position' };
     const spot = Course.markHere(course, last.lat, last.lon);
+    // 만든 자리가 곧 지나는 자리다. 구간을 닫아 기록 달리기에도 지점 사이 페이스를 남긴다
+    const split = Run.passSpot(run, course.spots.length - 1);
     if (store) store.writeCourse(course);
-    trace.append('mark', '여기 표시. 지점 ' + course.spots.length + '곳');
+    trace.append('mark', '여기 표시. 지점 ' + course.spots.length + '곳'
+      + (split ? ' 구간 ' + Math.round(split.segDist) + 'm' : ''));
     beep();
     onChange();
     return { marked: true, spot: spot };
@@ -453,11 +458,14 @@ export function createRunSession(deps) {
       // 그 코스를 다시 달릴 수 있다. 2회차가 이 앱의 값이고, 1회차 뒤 사용자가
       // 저장을 눌러야 한다면 그 값이 사용자의 기억에 달린다
       Shelf.keepLast(shelf, course, at);
+      // 어느 코스로 달렸는지를 요약에 남긴다. 코스 화면이 코스별 기록을 이걸로 찾는다
+      const rec = Object.assign({ courseId: course.id, courseName: course.name || '' }, done.summary);
       if (store) {
         store.writeCourse(course);
         store.writeShelf(shelf);
-        store.appendRun(done.summary);
+        store.appendRun(rec);
       }
+      lastRun = rec;
       trace.append('mark', '=== 달리기 종료 (' + reason + '). '
         + (done.summary.dist / 1000).toFixed(2) + 'km, 위치 ' + done.summary.fixCount + '건 ===');
       // 스스로 끝난 것은 말로 알린다. 누르지 않았는데 끝났으므로 소리만 나면
@@ -500,6 +508,15 @@ export function createRunSession(deps) {
     });
   }
 
+  // 이 코스로 달린 기록. 최근 것이 앞이다. 식별자가 우선이고,
+  // 저장하며 식별자가 바뀐 경우를 이름이 받친다
+  function courseRuns(id, name) {
+    if (!store || !store.readRuns) return [];
+    return store.readRuns().filter(function (r) {
+      return r.courseId === id || (!!name && r.courseName === name);
+    }).reverse();
+  }
+
   // 지금 자리에서 시작할 만한 코스. 고르는 것은 사용자다
   function suggestView() {
     if (!lastKnown) return [];
@@ -517,9 +534,11 @@ export function createRunSession(deps) {
   // 하나로 두면 한 함수가 「아직 안 달림」과 「달리는 중」을 겸한다
   function readyView() {
     return {
-      state: 'ready', dist: 0, ms: 0, pace: null, target: null, targetDist: null,
+      state: 'ready', dist: 0, ms: 0, pace: null, wPace: null, seg: null, splits: [],
+      target: null, targetDist: null,
       arrivals: [], spots: course.spots.slice(), fixCount: 0, gapMax: 0,
       here: lastKnown, segments: [], hasCourse: course.path.length > 0,
+      coursePath: course.path.slice(), lastRun: lastRun,
       courseName: course.name || '', shelf: shelfView(), shelfFull: Shelf.isFull(shelf),
       suggested: suggestView(),
       ...startFields()
@@ -540,6 +559,10 @@ export function createRunSession(deps) {
       dist: t ? t.dist : 0,
       ms: run.startedAt ? at - run.startedAt : 0,
       pace: t ? paceToShow(t, at) : null,
+      // 현재(창) 페이스는 보조다. 진행 중 구간은 지점 목록 자리에서 실시간으로 갱신된다
+      wPace: t ? windowPace(t) : null,
+      seg: Run.currentSegment(run, at),
+      splits: run.splits.slice(),
       target: target,
       targetDist: target && here ? Run.distanceToTarget(run, here.lat, here.lon) : null,
       arrivals: run.arrivals.slice(),
@@ -551,6 +574,8 @@ export function createRunSession(deps) {
       // 결손으로 끊긴 조각들. 이어 그리면 지나지 않은 길이 경로로 보인다
       segments: t ? segments(t) : [],
       hasCourse: course.path.length > 0,
+      // 기준 경로. 따라가기 달리기에서 실제 궤적과 견주어 보인다
+      coursePath: course.path.slice(), lastRun: lastRun,
       courseName: course.name || '', shelf: shelfView(), shelfFull: Shelf.isFull(shelf),
       // 달리는 중에는 추천하지 않는다. 코스를 갈 수 없는 상태에서 권하면 누를 곳이 없다
       suggested: inProgress() ? [] : suggestView(),
@@ -573,6 +598,7 @@ export function createRunSession(deps) {
     loadCourse: loadCourse,
     removeCourse: removeCourse,
     clearCourse: clearCourse,
+    courseRuns: courseRuns,
     view: view,
     course: function () { return course; }
   };

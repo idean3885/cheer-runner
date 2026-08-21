@@ -41,9 +41,10 @@ function fakeStore(seed, opts) {
   const o = opts || {};
   let course = seed || {};
   let shelf = o.shelf || {};
-  const runs = [];
+  const runs = (o.runs || []).slice();
   return {
     runs,
+    readRuns: function () { return runs.slice(); },
     readCourse: function () { return course; },
     writeCourse: function (c) { course = c; return true; },
     readShelf: function () { return shelf; },
@@ -221,6 +222,120 @@ test('위치를 받기 전에는 여기 표시가 되지 않는다', async funct
   const r = s.markHere();
   assert(r.marked === false, '위치 없이 표시됐습니다');
   assert(r.reason === 'no-position', '사유가 다릅니다: ' + r.reason);
+});
+
+test('여기 표시가 구간을 닫아 기록 달리기에도 구간 페이스가 남는다', async function () {
+  const { s, clock } = build({ course: { spots: [], path: [] } });
+  await s.start();
+  s.onFixes({ error: null, fixes: [fix({ t: T0 })] });
+  for (let i = 1; i <= 40; i++) {
+    clock.advance(1000);
+    s.onFixes({ error: null, fixes: [fix({ t: T0 + i * 1000, lat: north(3 * i) })] });
+  }
+  s.markHere();
+  const v = s.view();
+  assert(v.splits.length === 1, '구간 기록이 없습니다');
+  assert(v.splits[0].by === 'mark', '닫은 사유가 다릅니다: ' + v.splits[0].by);
+  assert(v.splits[0].pace != null, '구간 페이스가 없습니다');
+});
+
+test('메인 페이스는 평균이라 지점을 찍어도 그대로다', async function () {
+  const { s, clock } = build({ course: { spots: [], path: [] } });
+  await s.start();
+  s.onFixes({ error: null, fixes: [fix({ t: T0 })] });
+  for (let i = 1; i <= 40; i++) {
+    clock.advance(1000);
+    s.onFixes({ error: null, fixes: [fix({ t: T0 + i * 1000, lat: north(3 * i) })] });
+  }
+  const before = s.view().pace;
+  s.markHere();
+  const after = s.view().pace;
+  assert(before != null && after === before,
+    '지점 표시로 페이스가 바뀌었습니다: ' + before + ' → ' + after);
+});
+
+test('진행 중 구간이 실시간으로 나온다', async function () {
+  const { s, clock } = build({ course: { spots: [], path: [] } });
+  await s.start();
+  s.onFixes({ error: null, fixes: [fix({ t: T0 })] });
+  for (let i = 1; i <= 10; i++) {
+    clock.advance(1000);
+    s.onFixes({ error: null, fixes: [fix({ t: T0 + i * 1000, lat: north(3 * i) })] });
+  }
+  s.markHere();
+  for (let i = 11; i <= 15; i++) {
+    clock.advance(1000);
+    s.onFixes({ error: null, fixes: [fix({ t: T0 + i * 1000, lat: north(3 * i) })] });
+  }
+  const seg = s.view().seg;
+  assert(seg, '진행 중 구간이 없습니다');
+  assert(seg.dist < 20, '구간이 표시 자리에서 다시 시작하지 않았습니다: ' + Math.round(seg.dist) + 'm');
+});
+
+test('코스별 달리기 기록을 식별자와 이름으로 찾는다', async function () {
+  const { s, clock } = build({
+    course: { spots: [], path: [] },
+    store: { runs: [{ courseId: 'old', courseName: '한강', startedAt: T0 - 86400000, dist: 1000, ms: 300000, pace: 300 }] }
+  });
+  await s.start();
+  s.onFixes({ error: null, fixes: [fix({ t: T0 })] });
+  for (let i = 1; i <= 10; i++) {
+    clock.advance(1000);
+    s.onFixes({ error: null, fixes: [fix({ t: T0 + i * 1000, lat: north(3 * i) })] });
+  }
+  s.markHere();
+  await s.finish('user');
+  const byId = s.courseRuns(s.course().id, '');
+  assert(byId.length === 1, '식별자로 찾지 못했습니다: ' + byId.length);
+  assert((byId[0].splits || []).length === 2, '기록에 구간이 없습니다');
+  // 저장하며 식별자가 바뀌어도 이름이 받친다
+  assert(s.courseRuns('새 식별자', '한강').length === 1, '이름으로 찾지 못했습니다');
+  assert(s.courseRuns('없는 것', '').length === 0, '다른 코스의 기록이 잡혔습니다');
+});
+
+test('저장된 마지막 달리기가 달리기 전 화면에 실린다', async function () {
+  const { s } = build({
+    course: { spots: [], path: [{ lat: LAT, lon: LON }, { lat: north(500), lon: LON }] },
+    store: { runs: [{ startedAt: T0 - 86400000, dist: 1600, ms: 749000, pace: 468 }] }
+  });
+  const v = s.view();
+  assert(v.state === 'ready', '달리기 전이 아닙니다');
+  assert(v.lastRun && v.lastRun.dist === 1600, '마지막 달리기가 실리지 않았습니다');
+  assert(v.coursePath.length === 2, '기준 경로가 실리지 않았습니다');
+});
+
+test('종료하면 마지막 달리기가 그 자리에서 갱신된다', async function () {
+  const { s, clock } = build({ course: { spots: [], path: [] } });
+  await s.start();
+  s.onFixes({ error: null, fixes: [fix({ t: T0 })] });
+  for (let i = 1; i <= 10; i++) {
+    clock.advance(1000);
+    s.onFixes({ error: null, fixes: [fix({ t: T0 + i * 1000, lat: north(3 * i) })] });
+  }
+  await s.finish('user');
+  const v = s.view();
+  assert(v.lastRun && Math.abs(v.lastRun.dist - v.dist) < 1, '마지막 달리기가 갱신되지 않았습니다');
+});
+
+test('종료 요약에 구간 목록이 담긴다', async function () {
+  const { s, clock, store } = build({ course: { spots: [], path: [] } });
+  await s.start();
+  s.onFixes({ error: null, fixes: [fix({ t: T0 })] });
+  for (let i = 1; i <= 10; i++) {
+    clock.advance(1000);
+    s.onFixes({ error: null, fixes: [fix({ t: T0 + i * 1000, lat: north(3 * i) })] });
+  }
+  s.markHere();
+  for (let i = 11; i <= 15; i++) {
+    clock.advance(1000);
+    s.onFixes({ error: null, fixes: [fix({ t: T0 + i * 1000, lat: north(3 * i) })] });
+  }
+  await s.finish('user');
+  assert(store.runs.length === 1, '요약이 저장되지 않았습니다');
+  const splits = store.runs[0].splits;
+  assert(splits.length === 2, '구간이 2건이 아닙니다: ' + splits.length);
+  assert(splits[0].by === 'mark' && splits[1].by === 'finish',
+    '구간 사유가 다릅니다: ' + splits.map(function (x) { return x.by; }).join(','));
 });
 
 /* ── 시작 조건 ────────────────────────────────────────────────── */
