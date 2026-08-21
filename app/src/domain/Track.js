@@ -114,6 +114,21 @@ export function averagePace(track, at) {
   return paceOf(track.dist, at - track.startedAt);
 }
 
+// 기록에 남기는 표시용 경로. 결손 조각을 유지한 채 전체 점 수를 상한으로 솎는다.
+// 조각을 이어 붙이면 지나지 않은 길이 경로로 보인다
+export function displaySegments(track, max) {
+  const segs = segments(track);
+  const total = segs.reduce(function (a, s) { return a + s.length; }, 0);
+  const stride = Math.max(1, Math.ceil(total / max));
+  return segs
+    .map(function (seg) {
+      return seg
+        .filter(function (p, i) { return i % stride === 0 || i === seg.length - 1; })
+        .map(function (p) { return { lat: p.lat, lon: p.lon }; });
+    })
+    .filter(function (s) { return s.length > 1; });
+}
+
 // 결손을 뺀 구간들. 화면이 선을 나눠 그리는 데 쓴다
 export function segments(track) {
   const cuts = track.gaps.slice();

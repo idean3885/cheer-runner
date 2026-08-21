@@ -173,6 +173,9 @@ export function RunScreen(props) {
         <Pressable style={s.courseBtn} onPress={props.onOpenCourses} hitSlop={8}>
           <Text style={s.courseBtnText}>코스</Text>
         </Pressable>
+        <Pressable style={[s.courseBtn, s.recordsBtn]} onPress={props.onOpenRecords} hitSlop={8}>
+          <Text style={s.courseBtnText}>기록</Text>
+        </Pressable>
       </View>
 
       <View style={s.grid}>
@@ -346,8 +349,10 @@ const s = StyleSheet.create({
   suggestGo: { backgroundColor: COLOR.run, borderRadius: 9, paddingVertical: 8, paddingHorizontal: 14 },
   suggestGoText: { fontSize: 13, fontWeight: '700', color: COLOR.onDark },
   suggestSkip: { fontSize: 13, color: COLOR.inkSoft },
-  courseBtn: { position: 'absolute', right: 0, bottom: 14, paddingVertical: 6, paddingHorizontal: 12,
+  // 거리 숫자가 커져도 겹치지 않게 오른쪽에 세로로 쌓는다
+  courseBtn: { position: 'absolute', right: 0, bottom: 42, paddingVertical: 5, paddingHorizontal: 12,
     borderRadius: 9, borderWidth: 1, borderColor: COLOR.run },
+  recordsBtn: { bottom: 6 },
   courseBtnText: { fontSize: 13, fontWeight: '700', color: COLOR.run },
   head: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', marginTop: 8 },
   km: { fontSize: 64, fontWeight: '800', fontVariant: ['tabular-nums'], color: COLOR.ink },

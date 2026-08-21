@@ -14,6 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { DiagnosticScreen } from './src/presentation/screen/DiagnosticScreen';
 import { RunScreen } from './src/presentation/screen/RunScreen';
 import { CourseScreen } from './src/presentation/screen/CourseScreen';
+import { RecordsScreen } from './src/presentation/screen/RecordsScreen';
 import { COLOR } from './src/presentation/theme';
 import { diagnosticSession, runSession } from './src/application/wiring';
 import { AutoStartMarker, MARK } from './src/infrastructure/storage/AutoStartMarker';
@@ -44,6 +45,9 @@ export default function App() {
         // 화면만 연다. 달리기를 걸지 않는다
         FileTrace.append('vis', '코스 화면 표식을 확인했습니다');
         setScreen('course');
+      } else if (AutoStartMarker.consume(MARK.records)) {
+        FileTrace.append('vis', '기록 화면 표식을 확인했습니다');
+        setScreen('records');
       }
     })();
   }, []);
@@ -67,8 +71,12 @@ export default function App() {
           {screen === 'course' ? (
             <CourseScreen onClose={function () { setScreen('run'); }} />
           ) : null}
+          {screen === 'records' ? (
+            <RecordsScreen onClose={function () { setScreen('run'); }} />
+          ) : null}
           {screen === 'run' ? (
-            <RunScreen onOpenCourses={function () { setScreen('course'); }} />
+            <RunScreen onOpenCourses={function () { setScreen('course'); }}
+              onOpenRecords={function () { setScreen('records'); }} />
           ) : null}
         </View>
       </SafeAreaView>

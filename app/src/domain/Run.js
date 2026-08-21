@@ -10,8 +10,8 @@
 // 종료된 달리기에 위치가 들어오는 것을 막을 자리가 없다.
 
 import { haversine, paceOf } from './geo.js';
-import { createTrack, extend, windowPace, averagePace } from './Track.js';
-import { IDLE_MS, MOVE_MIN } from './constants.js';
+import { createTrack, extend, windowPace, averagePace, displaySegments } from './Track.js';
+import { IDLE_MS, MOVE_MIN, REC_PATH_MAX } from './constants.js';
 
 export const STATE = { ready: 'ready', running: 'running', finished: 'finished' };
 
@@ -210,6 +210,8 @@ export function summary(run) {
     windowPace: t ? windowPace(t) : null,
     arrivals: run.arrivals.slice(),
     splits: run.splits.slice(),
+    // 표시용 경로. 기록은 자기 경로를 갖는다. 결손 조각을 유지하고 상한으로 솎는다
+    path: t ? displaySegments(t, REC_PATH_MAX) : [],
     spots: run.spots.length,
     fixCount: run.fixCount,
     gapMax: run.gapMax,
