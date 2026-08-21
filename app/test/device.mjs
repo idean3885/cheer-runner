@@ -10,7 +10,8 @@
 import fs from 'node:fs';
 import { SPEECH_MSG } from '../src/application/DiagnosticSession.js';
 import {
-  BUNDLE, OTHER, sleep, fail, workDir, findDevice, pushMarker, pullTrace, launch, hiddenFrom
+  BUNDLE, OTHER, sleep, fail, workDir, findDevice, pushMarker, pullTrace, launch, hiddenFrom,
+  clearSession
 } from './device-lib.mjs';
 
 const FOREGROUND_MS = 12000;
@@ -70,7 +71,10 @@ console.log('  음성 요청 ' + judged.asked + '건 · 끝까지 재생 ' + jud
 console.log('  오류 ' + judged.errors.length + '건');
 judged.errors.slice(0, 3).forEach(function (e) { console.log('    ' + e.msg); });
 
-// 앱을 다시 띄워 구독을 정리한다. 남기면 iOS 가 계속 깨운다
+// 세션 기록을 비우고 다시 띄워 구독을 정리한다. 진단 세션은 상한까지 살아 있도록
+// 설계돼 있어서 재실행만으로는 끝나지 않는다. 실제로 시험이 끝난 뒤에도
+// 20초마다 음성이 계속 나오는 상태가 됐다
+await clearSession(dev, dir);
 await launch(dev, BUNDLE);
 await sleep(3000);
 

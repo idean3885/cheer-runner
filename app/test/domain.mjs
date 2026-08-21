@@ -203,6 +203,84 @@ test('지점은 순서대로 하나씩 목표가 된다', function () {
   assert(run.arrivals.length === 2, '도달 기록이 2건이 아닙니다');
 });
 
+/* ── 구간 ─────────────────────────────────────────────────────── */
+
+test('달리며 지점을 표시하면 그 자리에서 구간이 닫힌다', function () {
+  const run = Run.createRun({ spots: [] });
+  Run.start(run, T0);
+  Run.accept(run, fix({ t: T0, speed: 3 }));
+  for (let i = 1; i <= 10; i++) Run.accept(run, fix({ t: T0 + i * 1000, lat: north(3 * i), speed: 3 }));
+  const split = Run.passSpot(run, 0);
+  assert(split, '구간이 닫히지 않았습니다');
+  assert(split.by === 'mark', '닫은 사유가 다릅니다: ' + split.by);
+  near(split.segDist, 30, 2, '구간 거리');
+  assert(split.pace != null, '구간 페이스가 없습니다');
+  assert(run.splits.length === 1, '구간 기록이 1건이 아닙니다');
+});
+
+test('지점 표시는 평균 페이스를 재설정하지 않는다', function () {
+  // 같은 궤적을 하나는 표시 없이, 하나는 중간에 표시하며 달린다. 평균은 같아야 한다
+  const plain = Run.createRun({ spots: [] });
+  const marked = Run.createRun({ spots: [] });
+  [plain, marked].forEach(function (run) {
+    Run.start(run, T0);
+    Run.accept(run, fix({ t: T0, speed: 3 }));
+    for (let i = 1; i <= 20; i++) {
+      Run.accept(run, fix({ t: T0 + i * 1000, lat: north(3 * i), speed: 3 }));
+      if (run === marked && i === 10) Run.passSpot(run, 0);
+    }
+  });
+  const at = T0 + 20000;
+  near(Track.averagePace(marked.track, at), Track.averagePace(plain.track, at), 0.01, '평균 페이스');
+});
+
+test('진행 중 구간은 마지막으로 닫힌 자리부터다', function () {
+  const run = Run.createRun({ spots: [] });
+  Run.start(run, T0);
+  Run.accept(run, fix({ t: T0, speed: 3 }));
+  for (let i = 1; i <= 10; i++) Run.accept(run, fix({ t: T0 + i * 1000, lat: north(3 * i), speed: 3 }));
+  Run.passSpot(run, 0);
+  for (let i = 11; i <= 15; i++) Run.accept(run, fix({ t: T0 + i * 1000, lat: north(3 * i), speed: 3 }));
+  const seg = Run.currentSegment(run, T0 + 15000);
+  assert(seg, '진행 중 구간이 없습니다');
+  near(seg.dist, 15, 2, '진행 구간 거리');
+  assert(seg.ms === 5000, '진행 구간 시간이 다릅니다: ' + seg.ms);
+});
+
+test('도달도 구간 기록에 남는다', function () {
+  const run = Run.createRun({ spots: [{ id: 's1', lat: north(100), lon: LON, rad: WAYPOINT_RAD }] });
+  Run.start(run, T0);
+  Run.accept(run, fix({ t: T0, speed: 3 }));
+  for (let i = 1; i <= 40; i++) Run.accept(run, fix({ t: T0 + i * 1000, lat: north(3 * i), speed: 3 }));
+  assert(run.splits.length === 1, '도달이 구간으로 남지 않았습니다');
+  assert(run.splits[0].by === 'arrive', '닫은 사유가 다릅니다: ' + run.splits[0].by);
+  assert(run.splits[0].segDist === run.arrivals[0].segDist, '도달 기록과 구간 기록의 거리가 다릅니다');
+});
+
+test('종료는 닫힌 구간이 있으면 잔여 구간을 닫는다', function () {
+  const run = Run.createRun({ spots: [] });
+  Run.start(run, T0);
+  Run.accept(run, fix({ t: T0, speed: 3 }));
+  for (let i = 1; i <= 10; i++) Run.accept(run, fix({ t: T0 + i * 1000, lat: north(3 * i), speed: 3 }));
+  Run.passSpot(run, 0);
+  for (let i = 11; i <= 15; i++) Run.accept(run, fix({ t: T0 + i * 1000, lat: north(3 * i), speed: 3 }));
+  const done = Run.finish(run, T0 + 15000);
+  assert(done.summary.splits.length === 2, '구간이 2건이 아닙니다: ' + done.summary.splits.length);
+  const last = done.summary.splits[1];
+  assert(last.by === 'finish', '마지막 구간의 사유가 다릅니다: ' + last.by);
+  near(last.segDist, 15, 2, '잔여 구간 거리');
+});
+
+test('지점이 없던 달리기는 종료에 구간을 만들지 않는다', function () {
+  // 구간 하나가 전체와 같으면 같은 것을 두 번 적는 셈이다
+  const run = Run.createRun({ spots: [] });
+  Run.start(run, T0);
+  Run.accept(run, fix({ t: T0, speed: 3 }));
+  Run.accept(run, fix({ t: T0 + 1000, lat: north(3), speed: 3 }));
+  const done = Run.finish(run, T0 + 2000);
+  assert(done.summary.splits.length === 0, '구간이 생겼습니다: ' + done.summary.splits.length);
+});
+
 /* ── 상태 전이 ────────────────────────────────────────────────── */
 
 test('종료된 달리기는 위치를 받지 않는다', function () {

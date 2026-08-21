@@ -6,7 +6,7 @@
   "scripts": {
     "diagrams": "node tools/render-diagrams.mjs",
     "cue": "node tools/make-cue.mjs",
-    "gates": "node tools/check-layers.mjs && node tools/check-imports.mjs && node tools/check-function-size.mjs && npm test --prefix app",
+    "gates": "node tools/check-layers.mjs && node tools/check-imports.mjs && node tools/check-function-size.mjs && npm run coverage --prefix app",
     "gates:size": "node tools/check-function-size.mjs --report"
   },
   "devDependencies": {

@@ -12,23 +12,19 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import { runSession } from '../../application/wiring';
 import { COLOR } from '../theme';
 import { SAVED_MAX } from '../../domain/constants';
+import { fmtDur, fmtPace, fmtWhen, splitText } from '../format';
 
 function fmtKm(m) {
   return (m / 1000).toFixed(2) + 'km';
-}
-
-// 언제 저장한 것인지. 날짜만으로는 오늘 두 번 달린 것을 가를 수 없다
-function fmtWhen(at) {
-  if (!at) return '';
-  const d = new Date(at);
-  const two = function (n) { return (n < 10 ? '0' : '') + n; };
-  return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + two(d.getHours()) + ':' + two(d.getMinutes());
 }
 
 export function CourseScreen(props) {
   const [v, setV] = useState(runSession.view());
   const [name, setName] = useState('');
   const [notice, setNotice] = useState(null);
+  // 기록을 펼친 코스. 한 번에 하나만 펼친다. 목록이 세 칸이라 접기 없이도 좁지만,
+  // 구간 목록까지 늘어놓으면 불러오기 버튼이 화면 밖으로 밀린다
+  const [openId, setOpenId] = useState(null);
 
   function refresh() { setV(runSession.view()); }
 
@@ -69,6 +65,10 @@ export function CourseScreen(props) {
     runSession.removeCourse(id);
     setNotice('지웠습니다');
     refresh();
+  }
+
+  function onToggle(id) {
+    setOpenId(openId === id ? null : id);
   }
 
   function onClear() {
@@ -116,14 +116,16 @@ export function CourseScreen(props) {
         {last.length === 0 ? (
           <Text style={s.empty}>달리기를 마치면 그 코스가 여기 남습니다. 저장을 누르지 않아도 남습니다.</Text>
         ) : last.map(function (c) {
-          return <Row key={c.id} course={c} onLoad={onLoad} onRemove={onRemove} />;
+          return <Row key={c.id} course={c} open={openId === c.id}
+            onToggle={onToggle} onLoad={onLoad} onRemove={onRemove} />;
         })}
 
         <Text style={s.h2}>저장한 코스 {saved.length}/{SAVED_MAX}</Text>
         {saved.length === 0 ? (
           <Text style={s.empty}>이름을 붙여 저장한 코스가 여기 쌓입니다.</Text>
         ) : saved.map(function (c) {
-          return <Row key={c.id} course={c} onLoad={onLoad} onRemove={onRemove} />;
+          return <Row key={c.id} course={c} open={openId === c.id}
+            onToggle={onToggle} onLoad={onLoad} onRemove={onRemove} />;
         })}
 
         <Pressable style={s.plain} onPress={onClear}>
@@ -141,21 +143,52 @@ function Row(props) {
   const c = props.course;
   return (
     <View style={[s.row, c.current ? s.rowOn : null]}>
-      <View style={s.rowLeft}>
-        <Text style={s.rowK} numberOfLines={1}>
-          {c.name || (c.slot === 'last' ? '마지막 달리기' : '이름 없음')}
-          {c.current ? <Text style={s.badge}>{'  지금 코스'}</Text> : null}
-        </Text>
-        <Text style={s.rowV}>
-          {'지점 ' + c.spots + '곳 · ' + fmtKm(c.dist) + (c.savedAt ? ' · ' + fmtWhen(c.savedAt) : '')}
-        </Text>
+      <View style={s.rowLine}>
+        {/* 이름 쪽을 누르면 이 코스로 달린 기록이 열린다 */}
+        <Pressable style={s.rowLeft} onPress={function () { props.onToggle(c.id); }}>
+          <Text style={s.rowK} numberOfLines={1}>
+            {c.name || (c.slot === 'last' ? '마지막 달리기' : '이름 없음')}
+            {c.current ? <Text style={s.badge}>{'  지금 코스'}</Text> : null}
+          </Text>
+          <Text style={s.rowV}>
+            {'지점 ' + c.spots + '곳 · ' + fmtKm(c.dist) + (c.savedAt ? ' · ' + fmtWhen(c.savedAt) : '')}
+          </Text>
+          <Text style={s.recToggle}>{props.open ? '기록 접기' : '기록 보기'}</Text>
+        </Pressable>
+        <Pressable style={s.btn} onPress={function () { props.onLoad(c.id); }}>
+          <Text style={s.btnText}>불러오기</Text>
+        </Pressable>
+        <Pressable onPress={function () { props.onRemove(c.id); }} hitSlop={8}>
+          <Text style={s.del}>지우기</Text>
+        </Pressable>
       </View>
-      <Pressable style={s.btn} onPress={function () { props.onLoad(c.id); }}>
-        <Text style={s.btnText}>불러오기</Text>
-      </Pressable>
-      <Pressable onPress={function () { props.onRemove(c.id); }} hitSlop={8}>
-        <Text style={s.del}>지우기</Text>
-      </Pressable>
+      {props.open ? <CourseStats runs={runSession.courseRuns(c.id, c.name)} /> : null}
+    </View>
+  );
+}
+
+// 이 코스로 달린 기록. 전체 통계 한 줄과 최근 달리기별 구간 페이스를 낸다
+function CourseStats(props) {
+  const runs = props.runs;
+  if (!runs.length) {
+    return <Text style={s.recEmpty}>아직 이 코스로 잰 기록이 없습니다. 다음 달리기부터 여기 쌓입니다.</Text>;
+  }
+  const total = runs.reduce(function (a, r) { return a + r.dist; }, 0);
+  return (
+    <View style={s.rec}>
+      <Text style={s.recSum}>달리기 {runs.length}번 · 총 {fmtKm(total)}</Text>
+      {runs.slice(0, 3).map(function (r, i) {
+        return (
+          <View key={'r' + i} style={s.recRun}>
+            <Text style={s.recV}>
+              {fmtWhen(r.startedAt)} · {fmtKm(r.dist)} · {fmtDur(r.ms)} · 평균 {fmtPace(r.pace)}
+            </Text>
+            {(r.splits || []).map(function (sp, j) {
+              return <Text key={'sp' + j} style={s.recSplit}>{splitText(sp)}</Text>;
+            })}
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -175,10 +208,18 @@ const s = StyleSheet.create({
   input: { flex: 1, backgroundColor: '#ffffff', borderRadius: 9, borderWidth: 1,
     borderColor: COLOR.divider, paddingHorizontal: 10, paddingVertical: 9,
     fontSize: 14, color: COLOR.ink },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10,
-    paddingHorizontal: 12, borderRadius: 12, marginBottom: 8,
+  row: { paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12, marginBottom: 8,
     backgroundColor: COLOR.card, borderWidth: 1, borderColor: COLOR.cardLine },
+  rowLine: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   rowOn: { borderColor: COLOR.run },
+  recToggle: { marginTop: 4, fontSize: 11.5, fontWeight: '700', color: COLOR.run },
+  rec: { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: COLOR.divider },
+  recSum: { fontSize: 12, fontWeight: '700', color: COLOR.ink },
+  recRun: { marginTop: 6 },
+  recV: { fontSize: 12, color: COLOR.ink, fontVariant: ['tabular-nums'] },
+  recSplit: { marginTop: 2, fontSize: 11.5, color: COLOR.ok, fontVariant: ['tabular-nums'] },
+  recEmpty: { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: COLOR.divider,
+    fontSize: 11.5, color: COLOR.inkSoft, lineHeight: 16 },
   rowLeft: { flex: 1 },
   rowK: { fontSize: 14.5, fontWeight: '700', color: COLOR.ink },
   badge: { fontSize: 11, fontWeight: '700', color: COLOR.run },
